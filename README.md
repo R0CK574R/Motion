@@ -29,13 +29,13 @@ The backend was tested against a real Postgres instance: register → login → 
 
 ## How it fits together
 
-The frontend holds the access token **in memory only** — never `localStorage`, which any XSS payload can read. The session survives a page reload via the HTTP-only refresh cookie: on mount the app calls `/api/auth/refresh`, and a single-flight refresh transparently retries any request that 401s.
+The frontend holds the access token **in memory only** — never `localStorage`, which any XSS payload can read. The session survives a page reload via the httpOnly refresh cookie: on mount the app calls `/api/auth/refresh`, and a single-flight refresh transparently retries any request that 401s.
 
-Portfolio edits autosave on an 800 ms debounce. New rows stay local until they have a ticker and share count, so half-typed input never reaches the database. Before running the X-ray, the client flushes pending saves first — the server analyzes what's in the database, so unsaved edits would otherwise produce a reading of a stale portfolio.
+Portfolio edits autosave on an 800 ms debounce. New rows stay local until they have a ticker and share count, so half-typed input never reaches the database. Before running the X-ray the client flushes pending saves first — the server analyzes what's in the database, so unsaved edits would otherwise produce a reading of a stale portfolio.
 
 The AI call goes to `POST /api/analysis`, which holds the Anthropic key server-side, recomputes the portfolio from the database rather than trusting client numbers, and returns 402 without an active subscription. The paywall is enforced on the server, not hidden in the UI.
 
-One note on Postgres: `NUMERIC` columns come back as **strings** (`"25.000000"`), so `lib/portfolioModel.js` normalizes them to numbers on load. Skip that, and you get string concatenation instead of arithmetic.
+One note on Postgres: `NUMERIC` columns come back as **strings** (`"25.000000"`), so `lib/portfolioModel.js` normalizes them to numbers on load. Skip that and you get string concatenation instead of arithmetic.
 
 ## Quick start
 
@@ -67,7 +67,7 @@ See [`backend/README.md`](backend/README.md) for the full API surface, environme
 
 ## Security notes
 
-- `backend/.env` is gitignored. Don't commit it. If a key ever lands in a commit, rotate it — scrubbing git history is not enough; it's already been published.
+- `backend/.env` is gitignored. Don't commit it. If a key ever lands in a commit, rotate it — scrubbing git history is not enough, it's already been published.
 - The Anthropic API key lives server-side only, by design.
 - Refresh tokens are stored as SHA-256 hashes, so a database dump doesn't hand out live sessions.
 - Passwords are bcrypt-hashed at cost factor 12.

@@ -1,0 +1,40 @@
+# ---- Secrets. The important part. ----
+# backend/.env holds your Anthropic key, Stripe secret key, Stripe webhook
+# secret, JWT signing secret, and DB credentials. It must never be committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Dependencies ----
+node_modules/
+.pnp
+.pnp.js
+
+# ---- Builds ----
+dist/
+build/
+.vite/
+
+# ---- Logs ----
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---- Test / coverage ----
+coverage/
+.nyc_output/
+
+# ---- Local database volumes ----
+pgdata/
+.DS_Store
