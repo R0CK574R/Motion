@@ -21,6 +21,7 @@ motion/
 | Stripe checkout / portal / webhook | Written, needs your Stripe keys to exercise |
 | Frontend dashboard + adaptive theme | Working |
 | Carved-stone cathedral backdrop (WebGL2 shaders, line-art fallback) | Working |
+| Aperture logo intro (WebGL2, once per session, skippable) | Working |
 | One-click demo mode (no signup wall) | Working |
 | Login / register / session persistence | Working |
 | Frontend wired to the backend (auth, persistence, paywall) | Working |
@@ -48,6 +49,12 @@ The background is a Gothic cathedral facade rendered live with WebGL2 shaders (`
 3. **Resolve.** Supersamples the result down to the screen, so ordinary 1× monitors get Retina-quality edges.
 
 The facade renders once per resize or theme change, never per frame, so it costs nothing while you scroll. Day mode is morning sun on limestone; night mode is moonlit silver tracery. Where WebGL2 isn't available, it falls back to SVG line art.
+
+## The intro
+
+On a visitor's first load, Motion's aperture logo appears as a carved-stone iris, rendered in a single WebGL2 shader (`frontend/src/lib/apertureIntro.js`). It swings up to face the viewer, light sweeps across it, the six blades open from a black pupil, and the view flies through the opening into the app. The opening is transparent, so the real first screen shows through as the iris widens.
+
+It runs for 1.85 seconds and plays once per browser session. Any click, tap, or key skips it. It is skipped entirely for visitors who prefer reduced motion and on browsers without WebGL2. The blade geometry matches the lucide Aperture icon in the header: six blades around a flat-topped hexagon, each edge running on clockwise as the seam over the next blade.
 
 ## Quick start
 

@@ -5,6 +5,7 @@ import { useAdaptiveTheme } from "./theme.js";
 import AuthScreen from "./components/AuthScreen.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import { Backdrop, PageShell } from "./components/Backdrop.jsx";
+import { Intro } from "./components/Intro.jsx";
 
 const POLL_ATTEMPTS = 6;
 const POLL_DELAY_MS = 1500;
@@ -77,11 +78,13 @@ function Shell() {
   }
 
   // The backdrop lives here, outside the screens, so switching screens never
-  // tears down and re-creates its WebGL context.
+  // tears down and re-creates its WebGL context. The intro sits above it all
+  // and removes itself once it has played.
   return (
     <>
       <Backdrop t={t} />
       {screen}
+      <Intro t={t} />
     </>
   );
 }
