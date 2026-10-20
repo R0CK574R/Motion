@@ -20,6 +20,7 @@ motion/
 | Subscription gating on the AI endpoint | Working (returns 402 without an active sub) |
 | Stripe checkout / portal / webhook | Written, needs your Stripe keys to exercise |
 | Frontend dashboard + adaptive theme | Working |
+| Carved-stone cathedral backdrop (WebGL2 shaders, line-art fallback) | Working |
 | One-click demo mode (no signup wall) | Working |
 | Login / register / session persistence | Working |
 | Frontend wired to the backend (auth, persistence, paywall) | Working |
@@ -37,6 +38,16 @@ Portfolio edits autosave on an 800 ms debounce. New rows stay local until they h
 The AI call goes to `POST /api/analysis`, which holds the Anthropic key server-side, recomputes the portfolio from the database rather than trusting client numbers, and returns 402 without an active subscription. The paywall is enforced on the server, not hidden in the UI.
 
 One note on Postgres: `NUMERIC` columns come back as **strings** (`"25.000000"`), so `lib/portfolioModel.js` normalizes them to numbers on load. Skip that and you get string concatenation instead of arithmetic.
+
+## The backdrop
+
+The background is a Gothic cathedral facade rendered live with WebGL2 shaders (`frontend/src/lib/cathedral.js`). It takes three passes:
+
+1. **Scene.** Evaluates the rose window, the lancet arcade, and the quatrefoil wall as an analytic height field, using rotational symmetry folds.
+2. **Light.** Lights that height field like carved stone, with surface normals, soft cast shadows, ambient occlusion, and grain. Window openings are cut through to pure black.
+3. **Resolve.** Supersamples the result down to the screen, so ordinary 1× monitors get Retina-quality edges.
+
+The facade renders once per resize or theme change, never per frame, so it costs nothing while you scroll. Day mode is morning sun on limestone; night mode is moonlit silver tracery. Where WebGL2 isn't available, it falls back to SVG line art.
 
 ## Quick start
 

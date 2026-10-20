@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext.jsx";
 import { useAdaptiveTheme } from "./theme.js";
 import AuthScreen from "./components/AuthScreen.jsx";
 import Dashboard from "./components/Dashboard.jsx";
+import { Backdrop, PageShell } from "./components/Backdrop.jsx";
 
 const POLL_ATTEMPTS = 6;
 const POLL_DELAY_MS = 1500;
@@ -51,28 +52,38 @@ function Shell() {
     };
   }, [status, refreshAccount]);
 
+  let screen;
   if (status === "loading") {
-    return (
-      <div className={`flex min-h-screen items-center justify-center font-sans ${t.page}`}>
-        <Loader2 className={`h-6 w-6 animate-spin ${t.muted}`} />
-      </div>
+    screen = (
+      <PageShell t={t} className="flex items-center justify-center">
+        <div className={`rounded-xl border p-3 ${t.plaque}`}>
+          <Loader2 className={`h-6 w-6 animate-spin ${t.muted}`} />
+        </div>
+      </PageShell>
     );
+  } else if (status === "anon") {
+    screen = <AuthScreen theme={theme} />;
+  } else if (activating) {
+    screen = (
+      <PageShell t={t} className="flex items-center justify-center">
+        <div className={`flex flex-col items-center gap-3 rounded-xl border px-8 py-6 ${t.plaque}`}>
+          <CheckCircle2 className={`h-7 w-7 ${t.up}`} />
+          <p className={`text-sm ${t.plaqueMuted}`}>Activating your subscription…</p>
+        </div>
+      </PageShell>
+    );
+  } else {
+    screen = <Dashboard theme={theme} />;
   }
 
-  if (status === "anon") return <AuthScreen theme={theme} />;
-
-  if (activating) {
-    return (
-      <div
-        className={`flex min-h-screen flex-col items-center justify-center gap-3 font-sans ${t.page}`}
-      >
-        <CheckCircle2 className={`h-7 w-7 ${t.up}`} />
-        <p className={`text-sm ${t.muted}`}>Activating your subscription…</p>
-      </div>
-    );
-  }
-
-  return <Dashboard theme={theme} />;
+  // The backdrop lives here, outside the screens, so switching screens never
+  // tears down and re-creates its WebGL context.
+  return (
+    <>
+      <Backdrop t={t} />
+      {screen}
+    </>
+  );
 }
 
 export default function App() {

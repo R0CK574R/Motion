@@ -18,6 +18,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { api, ApiError } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { ThemeToggle, StatTile } from "./Chrome.jsx";
+import { PageShell } from "./Backdrop.jsx";
 import {
   usd0,
   pct,
@@ -281,14 +282,14 @@ export default function Dashboard({ theme }) {
 
   if (loading) {
     return (
-      <div className={`flex min-h-screen items-center justify-center font-sans ${t.page}`}>
+      <PageShell t={t} className="flex items-center justify-center">
         <Loader2 className={`h-6 w-6 animate-spin ${t.muted}`} />
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-500 ${t.page}`}>
+    <PageShell t={t}>
       <style>{`
         @keyframes mo-fade { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform:none; } }
         .mo-fade { animation: mo-fade .4s cubic-bezier(.2,.7,.2,1) both; }
@@ -299,7 +300,7 @@ export default function Dashboard({ theme }) {
 
       <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
         {/* Header */}
-        <header className="mb-8 flex items-start justify-between gap-4">
+        <header className={`mb-8 flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-colors duration-500 ${t.plaque}`}>
           <div className="flex items-center gap-3">
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-500 ${t.logo}`}
@@ -308,7 +309,7 @@ export default function Dashboard({ theme }) {
             </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Motion</h1>
-              <p className={`text-sm ${t.muted}`}>{isDemo ? "Demo session" : user?.email}</p>
+              <p className={`text-sm ${t.plaqueMuted}`}>{isDemo ? "Demo session" : user?.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -682,6 +683,6 @@ export default function Dashboard({ theme }) {
           </span>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
