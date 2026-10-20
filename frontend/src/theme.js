@@ -9,9 +9,20 @@ import { useState, useEffect } from "react";
  * ------------------------------------------------------------------ */
 export const THEMES = {
   light: {
-    page: "bg-gradient-to-b from-neutral-50 to-neutral-100 text-neutral-900",
-    card: "border-neutral-200 bg-white",
-    cardDashed: "border-neutral-300 bg-white",
+    pageText: "text-neutral-900",
+    pageBg: "bg-gradient-to-b from-neutral-50 to-neutral-100",
+    canvasBg: "#f5f5f5",
+    scheme: "light",
+    // Shader preset in lib/cathedral.js: morning sun on pale limestone.
+    cathedral: "light",
+    // Cards float in front of the carved wall; plaques are frosted glass for
+    // text that would otherwise sit directly on the stone.
+    card: "border-neutral-200 bg-white shadow-[0_14px_34px_-16px_rgba(0,0,0,0.38)]",
+    cardDashed: "border-neutral-300 bg-white shadow-[0_14px_34px_-16px_rgba(0,0,0,0.38)]",
+    plaque: "border-white/70 bg-white/90 backdrop-blur-md shadow-[0_14px_34px_-16px_rgba(0,0,0,0.38)]",
+    // Secondary text on a plaque: one step darker than `muted`, because the
+    // frosted glass can pick up the black window openings behind it.
+    plaqueMuted: "text-neutral-600",
     input:
       "border-neutral-200 bg-white text-neutral-900 focus:border-neutral-400 focus:ring-neutral-200",
     logo: "bg-neutral-900 text-white",
@@ -40,6 +51,9 @@ export const THEMES = {
     errorBox: "border-rose-200 bg-rose-50 text-rose-700",
     note: "border-neutral-200 bg-neutral-100 text-neutral-500",
     placeholder: "#a3a3a3",
+    // Line-art fallback for browsers without WebGL2: one ink colour, opacity
+    // per layer.
+    ornament: { color: "#262626", rose: 0.09, lancet: 0.08, lattice: 0.06, glass: 0.3 },
     chart: {
       stroke: "#ffffff",
       tooltipBg: "#ffffff",
@@ -50,9 +64,16 @@ export const THEMES = {
     },
   },
   dark: {
-    page: "bg-gradient-to-b from-neutral-900 to-neutral-950 text-neutral-200",
-    card: "border-neutral-800 bg-neutral-900",
-    cardDashed: "border-neutral-700 bg-neutral-900",
+    pageText: "text-neutral-200",
+    pageBg: "bg-gradient-to-b from-neutral-900 to-neutral-950",
+    canvasBg: "#0d0d0d",
+    scheme: "dark",
+    // Shader preset: moonlit silver tracery against dark glass.
+    cathedral: "dark",
+    card: "border-neutral-800 bg-neutral-900 shadow-[0_16px_40px_-14px_rgba(0,0,0,0.9)]",
+    cardDashed: "border-neutral-700 bg-neutral-900 shadow-[0_16px_40px_-14px_rgba(0,0,0,0.9)]",
+    plaque: "border-neutral-700/60 bg-neutral-900/75 backdrop-blur-md shadow-[0_16px_40px_-14px_rgba(0,0,0,0.9)]",
+    plaqueMuted: "text-neutral-400",
     input:
       "border-neutral-800 bg-neutral-950 text-neutral-100 focus:border-neutral-600 focus:ring-neutral-700",
     logo: "bg-neutral-100 text-neutral-950",
@@ -81,6 +102,7 @@ export const THEMES = {
     errorBox: "border-rose-900 bg-neutral-900 text-rose-300",
     note: "border-neutral-800 bg-neutral-900 text-neutral-400",
     placeholder: "#525252",
+    ornament: { color: "#e5e5e5", rose: 0.075, lancet: 0.065, lattice: 0.05, glass: 0.3 },
     chart: {
       stroke: "#171717",
       tooltipBg: "#171717",

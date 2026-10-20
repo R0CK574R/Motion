@@ -1,17 +1,30 @@
 import React, { useState } from "react";
-import { Aperture, Loader2, AlertTriangle } from "lucide-react";
+import { Aperture, Loader2, AlertTriangle, PlayCircle } from "lucide-react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { ThemeToggle } from "./Chrome.jsx";
+import { PageShell } from "./Backdrop.jsx";
 
 export default function AuthScreen({ theme }) {
   const { mode, setMode, resolved, t } = theme;
-  const { login, register } = useAuth();
+  const { login, register, startDemo } = useAuth();
 
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
   const [error, setError] = useState("");
+
+  async function launchDemo() {
+    setError("");
+    setDemoBusy(true);
+    try {
+      await startDemo();
+    } catch (err) {
+      setError(err.message || "Could not start the demo.");
+      setDemoBusy(false);
+    }
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -42,11 +55,11 @@ export default function AuthScreen({ theme }) {
     "w-full rounded-lg border px-3 py-2.5 text-sm transition-colors duration-500 focus:outline-none focus:ring-2";
 
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-500 ${t.page}`}>
+    <PageShell t={t}>
       <style>{`input::placeholder { color: ${t.placeholder}; }`}</style>
 
       <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-        <div className="mb-6 flex items-center justify-between">
+        <div className={`mb-6 flex items-center justify-between rounded-xl border px-4 py-3 transition-colors duration-500 ${t.plaque}`}>
           <div className="flex items-center gap-3">
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-500 ${t.logo}`}
@@ -55,7 +68,7 @@ export default function AuthScreen({ theme }) {
             </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Motion</h1>
-              <p className={`text-sm ${t.muted}`}>Portfolio analytics.</p>
+              <p className={`text-sm ${t.plaqueMuted}`}>Portfolio analytics.</p>
             </div>
           </div>
           <ThemeToggle mode={mode} setMode={setMode} resolved={resolved} t={t} />
@@ -121,6 +134,28 @@ export default function AuthScreen({ theme }) {
             </button>
           </form>
 
+          <div className="my-4 flex items-center gap-3">
+            <span className={`h-px flex-1 ${t.barTrack}`} />
+            <span className={`text-xs ${t.faint}`}>or</span>
+            <span className={`h-px flex-1 ${t.barTrack}`} />
+          </div>
+
+          <button
+            onClick={launchDemo}
+            disabled={demoBusy}
+            className={`flex w-full items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition disabled:opacity-60 ${t.ghostBtn}`}
+          >
+            {demoBusy ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading demo…
+              </>
+            ) : (
+              <>
+                <PlayCircle className="h-4 w-4" /> View demo — no signup
+              </>
+            )}
+          </button>
+
           <button
             onClick={() => {
               setIsRegister((v) => !v);
@@ -134,11 +169,11 @@ export default function AuthScreen({ theme }) {
           </button>
         </div>
 
-        <p className={`mt-6 text-center text-xs leading-relaxed ${t.faint}`}>
+        <p className={`mt-6 rounded-xl border px-4 py-3 text-center text-xs leading-relaxed transition-colors duration-500 ${t.plaque} ${t.plaqueMuted}`}>
           Motion is an analytics tool, not investment advice. It describes what a
           portfolio is made of — it never tells you what to buy, sell, or hold.
         </p>
       </div>
-    </div>
+    </PageShell>
   );
 }

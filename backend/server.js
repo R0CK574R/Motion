@@ -13,6 +13,14 @@ const { handleWebhook } = require("./routes/billing");
 
 const app = express();
 
+// Behind App Runner, an ALB, or CloudFront, the TLS terminates at the proxy and
+// Express sees plain HTTP. Without this, req.secure is false and protocol-aware
+// logic (and some Secure-cookie behavior) misbehaves. The value is the number of
+// proxy hops to trust.
+if (process.env.TRUST_PROXY) {
+  app.set("trust proxy", Number(process.env.TRUST_PROXY) || 1);
+}
+
 app.use(helmet());
 app.use(
   cors({

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "migrate": "node -e \"require('fs').readFileSync('./db/schema.sql')\" && echo 'Run: psql $DATABASE_URL -f db/schema.sql'"
+    "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

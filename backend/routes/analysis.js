@@ -3,6 +3,7 @@ const pool = require("../db/pool");
 const requireAuth = require("../middleware/requireAuth");
 const requireSubscription = require("../middleware/requireSubscription");
 const { computePortfolio } = require("../utils/portfolioMath");
+const { DEMO_ANALYSIS } = require("../lib/demoData");
 
 const router = express.Router();
 
@@ -22,6 +23,12 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
 
 // POST /api/analysis — auth + active subscription required
 router.post("/", requireAuth, requireSubscription, async (req, res) => {
+  // Demo accounts get a pre-computed analysis: instant, free, and immune to
+  // being used to drain API credits. requireSubscription sets req.isDemo.
+  if (req.isDemo) {
+    return res.json(DEMO_ANALYSIS);
+  }
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: "Server is not configured with an AI provider key." });
   }

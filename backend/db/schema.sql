@@ -52,3 +52,9 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Demo accounts. Each "View demo" click creates a throwaway user with a
+-- seeded portfolio so visitors never hit a signup wall. Kept idempotent so
+-- this file stays safe to re-run against an existing database.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_users_demo ON users(is_demo, created_at) WHERE is_demo;

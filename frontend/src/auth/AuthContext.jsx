@@ -74,6 +74,14 @@ export function AuthProvider({ children }) {
     [authenticate]
   );
 
+  const startDemo = useCallback(async () => {
+    const data = await api("/api/auth/demo", { method: "POST" });
+    setAccessToken(data.accessToken);
+    await loadAccount();
+    setStatus("authed");
+    return data;
+  }, [loadAccount]);
+
   const logout = useCallback(async () => {
     try {
       await api("/api/auth/logout", { method: "POST" });
@@ -91,7 +99,9 @@ export function AuthProvider({ children }) {
       subscription.status === "active" || subscription.status === "trialing",
     login,
     register,
+    startDemo,
     logout,
+    isDemo: user?.isDemo === true,
     refreshAccount: loadAccount,
   };
 
