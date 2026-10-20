@@ -39,7 +39,7 @@ const SAVE_DEBOUNCE_MS = 800;
 
 export default function Dashboard({ theme }) {
   const { mode, setMode, resolved, t } = theme;
-  const { user, logout, isSubscribed, refreshAccount } = useAuth();
+  const { user, logout, isSubscribed, isDemo } = useAuth();
 
   const [rows, setRows] = useState([]);
   const [cash, setCash] = useState(0);
@@ -308,11 +308,11 @@ export default function Dashboard({ theme }) {
             </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Motion</h1>
-              <p className={`text-sm ${t.muted}`}>{user?.email}</p>
+              <p className={`text-sm ${t.muted}`}>{isDemo ? "Demo session" : user?.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {isSubscribed && (
+            {isSubscribed && !isDemo && (
               <button
                 onClick={openBillingPortal}
                 disabled={billingBusy}
@@ -326,14 +326,29 @@ export default function Dashboard({ theme }) {
             <ThemeToggle mode={mode} setMode={setMode} resolved={resolved} t={t} />
             <button
               onClick={logout}
-              title="Sign out"
-              aria-label="Sign out"
+              title={isDemo ? "Exit demo" : "Sign out"}
+              aria-label={isDemo ? "Exit demo" : "Sign out"}
               className={`rounded-lg border p-2 transition ${t.ghostBtn}`}
             >
               <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
         </header>
+
+        {isDemo && (
+          <div className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-colors duration-500 ${t.demoBadge}`}>
+            <span className="text-sm">
+              You're viewing a demo portfolio. Edit anything you like — it won't affect
+              anyone else, and it's cleared automatically.
+            </span>
+            <button
+              onClick={logout}
+              className="shrink-0 text-sm font-medium underline underline-offset-2"
+            >
+              Create your own account
+            </button>
+          </div>
+        )}
 
         {loadError && (
           <div className={`mb-6 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${t.errorBox}`}>

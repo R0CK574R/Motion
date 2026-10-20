@@ -4,11 +4,21 @@ const pool = require("../db/pool");
 async function requireSubscription(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT status FROM subscriptions WHERE user_id = $1`,
+      `SELECT u.is_demo, s.status
+       FROM users u
+       LEFT JOIN subscriptions s ON s.user_id = u.id
+       WHERE u.id = $1`,
       [req.userId]
     );
-    const status = rows[0]?.status;
 
+    // Demo accounts see the paid feature — that's the point of the demo. They
+    // are served cached output, so this never touches the AI provider.
+    if (rows[0]?.is_demo === true) {
+      req.isDemo = true;
+      return next();
+    }
+
+    const status = rows[0]?.status;
     if (status === "active" || status === "trialing") {
       return next();
     }

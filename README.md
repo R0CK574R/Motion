@@ -20,6 +20,7 @@ motion/
 | Subscription gating on the AI endpoint | Working (returns 402 without an active sub) |
 | Stripe checkout / portal / webhook | Written, needs your Stripe keys to exercise |
 | Frontend dashboard + adaptive theme | Working |
+| One-click demo mode (no signup wall) | Working |
 | Login / register / session persistence | Working |
 | Frontend wired to the backend (auth, persistence, paywall) | Working |
 | Live market prices | Not built — prices are entered by hand |
@@ -60,7 +61,7 @@ See [`backend/README.md`](backend/README.md) for the full API surface, environme
 ## Before this can take real users
 
 1. **Live price data.** The biggest remaining gap. Prices are entered by hand, and a portfolio tool where you retype every price won't retain anyone past day one.
-2. **Deploy.** RDS Postgres, backend container on AWS (App Runner or ECS Fargate), frontend on any static host. Set `secure: true` cookies behind TLS and point `APP_URL` at the real domain.
+2. **Deploy.** See [`DEPLOY-FREE.md`](DEPLOY-FREE.md) for the $0 path (Neon + Render + Vercel), or [`DEPLOY-AWS.md`](DEPLOY-AWS.md) for the AWS runbook — RDS, ECR, App Runner, and Amplify, with the cross-domain cookie and Apple Silicon build gotchas called out.
 3. **Stripe live mode.** Create the product/price in live mode, register the production webhook endpoint, and swap the keys.
 4. **SPA fallback.** Stripe returns users to `/billing/success?session_id=…`. Vite's dev server handles this automatically; a production static host needs a rewrite rule sending unknown paths to `index.html`.
 5. **Email verification and password reset.** Neither exists yet.

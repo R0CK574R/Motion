@@ -1,17 +1,29 @@
 import React, { useState } from "react";
-import { Aperture, Loader2, AlertTriangle } from "lucide-react";
+import { Aperture, Loader2, AlertTriangle, PlayCircle } from "lucide-react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { ThemeToggle } from "./Chrome.jsx";
 
 export default function AuthScreen({ theme }) {
   const { mode, setMode, resolved, t } = theme;
-  const { login, register } = useAuth();
+  const { login, register, startDemo } = useAuth();
 
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
   const [error, setError] = useState("");
+
+  async function launchDemo() {
+    setError("");
+    setDemoBusy(true);
+    try {
+      await startDemo();
+    } catch (err) {
+      setError(err.message || "Could not start the demo.");
+      setDemoBusy(false);
+    }
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -120,6 +132,28 @@ export default function AuthScreen({ theme }) {
               {isRegister ? "Create account" : "Sign in"}
             </button>
           </form>
+
+          <div className="my-4 flex items-center gap-3">
+            <span className={`h-px flex-1 ${t.barTrack}`} />
+            <span className={`text-xs ${t.faint}`}>or</span>
+            <span className={`h-px flex-1 ${t.barTrack}`} />
+          </div>
+
+          <button
+            onClick={launchDemo}
+            disabled={demoBusy}
+            className={`flex w-full items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition disabled:opacity-60 ${t.ghostBtn}`}
+          >
+            {demoBusy ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading demo…
+              </>
+            ) : (
+              <>
+                <PlayCircle className="h-4 w-4" /> View demo — no signup
+              </>
+            )}
+          </button>
 
           <button
             onClick={() => {
