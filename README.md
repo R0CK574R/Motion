@@ -23,6 +23,8 @@ motion/
 | Carved-stone cathedral backdrop (WebGL2 shaders, line-art fallback) | Working |
 | Aperture logo intro (WebGL2, once per session, skippable) | Working |
 | One-click demo mode (no signup wall) | Working |
+| C++ risk engine: value at risk, expected shortfall, risk contributions, stress tests | Working, unit-tested, on an illustrative model (no live data yet) |
+| CI (GitHub Actions): engine build + C++ and API tests, frontend build | Set up |
 | Login / register / session persistence | Working |
 | Frontend wired to the backend (auth, persistence, paywall) | Working |
 | Live market prices | Not built — prices are entered by hand |
@@ -56,13 +58,29 @@ On a visitor's first load, Motion's aperture logo appears as a carved-stone iris
 
 It runs for 1.85 seconds and plays once per browser session. Any click, tap, or key skips it. It is skipped entirely for visitors who prefer reduced motion and on browsers without WebGL2. The blade geometry matches the lucide Aperture icon in the header: six blades around a flat-topped hexagon, each edge running on clockwise as the seam over the next blade.
 
+## The risk engine
+
+Risk is computed in C++17 ([`risk-engine/`](risk-engine/README.md)), wrapped for Python with pybind11 and served to the API over HTTP:
+
+```
+browser -> Motion API (/api/risk) -> risk service (FastAPI) -> C++ engine
+```
+
+- **Value at risk and expected shortfall**, computed two ways: in closed form, and by Monte Carlo with correlated shocks drawn through a Cholesky factor of the covariance matrix. A unit test requires the two to agree, which is how the simulation is validated.
+- **Risk contribution** per position: who is responsible for the portfolio's variance, compared with who holds the money.
+- **Stress tests**: the loss if 2008, the 2020 crash, the 2022 rate shock or the dot-com bust repeated.
+
+The API computes position values from the database and sends only those to the engine, so the browser never supplies the numbers being analysed. If the engine is down, `/api/risk` returns 503 and the dashboard shows the risk section as offline while everything else keeps working.
+
+There is no market-data feed yet, so the engine runs on an illustrative one-factor model (a beta and a volatility per ticker). The dashboard says so next to the numbers, and the limits are listed in the engine's README.
+
 ## Quick start
 
 **Backend + database:**
 
 ```bash
 cp backend/.env.example backend/.env   # then fill it in — see backend/README.md
-docker compose up --build              # API on http://localhost:4000
+docker compose up --build              # API on http://localhost:4000, plus Postgres and the risk engine
 ```
 
 **Frontend:**

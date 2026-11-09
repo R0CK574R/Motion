@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  risk-engine:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: risk-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Build
+        run: |
+          cmake -S . -B build -Dpybind11_DIR="$(python -m pybind11 --cmakedir)"
+          cmake --build build -j
+      - name: C++ tests
+        run: ctest --test-dir build --output-on-failure
+      - name: API tests
+        run: python -m pytest service/tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build

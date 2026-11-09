@@ -19,6 +19,7 @@ import { api, ApiError } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { ThemeToggle, StatTile } from "./Chrome.jsx";
 import { PageShell } from "./Backdrop.jsx";
+import RiskPanel from "./RiskPanel.jsx";
 import {
   usd0,
   pct,
@@ -55,6 +56,8 @@ export default function Dashboard({ theme }) {
   const [billingBusy, setBillingBusy] = useState(false);
 
   const [view, setView] = useState("holdings");
+  // Bumped after every successful save so the risk section refetches.
+  const [riskKey, setRiskKey] = useState(0);
 
   // Refs let the debounced flush read current values without stale closures.
   const rowsRef = useRef(rows);
@@ -127,6 +130,7 @@ export default function Dashboard({ theme }) {
         }
       }
       setSaveState("saved");
+      setRiskKey((k) => k + 1);
     } catch (err) {
       console.error("Save failed", err);
       setSaveState("error");
@@ -170,6 +174,7 @@ export default function Dashboard({ theme }) {
     try {
       await api(`/api/portfolio/holdings/${id}`, { method: "DELETE" });
       setSaveState("saved");
+      setRiskKey((k) => k + 1);
     } catch (err) {
       console.error("Delete failed", err);
       setSaveState("error");
@@ -585,6 +590,8 @@ export default function Dashboard({ theme }) {
                 </div>
               </section>
             </div>
+
+            <RiskPanel t={t} refreshKey={riskKey} />
 
             {/* Analysis */}
             <div className="mt-6">

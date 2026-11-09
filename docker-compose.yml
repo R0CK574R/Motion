@@ -17,11 +17,19 @@ services:
       timeout: 5s
       retries: 10
 
+  # C++ risk engine behind a small Python HTTP wrapper. Internal only: the
+  # port is not published, so only the api service can reach it.
+  risk:
+    build: ./risk-engine
+    restart: unless-stopped
+
   api:
     build: ./backend
     restart: unless-stopped
     depends_on:
       postgres:
+        condition: service_healthy
+      risk:
         condition: service_healthy
     ports:
       - "4000:4000"
@@ -29,6 +37,7 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgres://motion:motion@postgres:5432/motion
+      RISK_ENGINE_URL: http://risk:8000
 
 volumes:
   motion_pgdata:
