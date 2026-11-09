@@ -19,7 +19,7 @@ ENV PORT=4000
 EXPOSE 4000
 
 # Lets the orchestrator restart the container if the app stops answering.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=3s --start-period=40s --retries=6 \
   CMD wget -qO- "http://127.0.0.1:${PORT}/health" || exit 1
 
 # MaxRAMPercentage sizes the heap from the container's memory limit, which
