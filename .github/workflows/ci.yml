@@ -75,7 +75,8 @@ jobs:
   # The whole stack in one job: Postgres, the C++ risk engine, the Java API
   # and the built frontend, driven by a real browser.
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: Playwright supports a fixed list of Ubuntu releases.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine
