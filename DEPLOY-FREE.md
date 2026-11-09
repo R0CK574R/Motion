@@ -21,14 +21,7 @@ Browser
 2. Create a project — name it `motion`, pick the region closest to you.
 3. Copy the **connection string** (`postgres://user:pass@ep-xxx.neon.tech/neondb?sslmode=require`).
 
-Apply the schema from your laptop:
-
-```bash
-cd backend
-DATABASE_URL="your-neon-connection-string" PGSSL=true npm run migrate
-```
-
-You should see the five tables listed back.
+There is no schema step. The API applies its own database migrations (Flyway) every time it starts, so the tables are created on the first deploy.
 
 ---
 
@@ -38,27 +31,27 @@ You should see the five tables listed back.
 2. **New** → **Web Service** → connect your Motion repo
 3. Settings:
    - Root Directory: `backend`
-   - Runtime: Node
-   - Build Command: `npm install`
-   - Start Command: `node server.js`
+   - Language: **Docker** (Render builds `backend/Dockerfile`; there is no build or start command to fill in)
    - Instance Type: **Free**
 4. Environment variables:
 
 | Key | Value |
 |---|---|
-| `NODE_ENV` | `production` |
+| `APP_ENV` | `production` |
 | `DATABASE_URL` | your Neon connection string |
 | `PGSSL` | `true` |
-| `TRUST_PROXY` | `1` |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | `native` |
 | `COOKIE_SAMESITE` | `none` |
 | `JWT_ACCESS_SECRET` | generate a fresh one (command below) |
 | `APP_URL` | leave blank — you'll fill it in at Step 4 |
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+openssl rand -hex 48
 ```
 
-5. Create, wait ~5 min, copy the URL (`https://motion-api-xxxx.onrender.com`)
+5. Create, wait for the first build (a Java build takes several minutes), then copy the URL (`https://motion-api-xxxx.onrender.com`)
+
+**Risk engine (optional).** The Risk section needs the C++ engine running too. Create a second Render web service the same way with Root Directory `risk-engine`, then set `RISK_ENGINE_URL` on the API service to its URL. Without it the dashboard still works and shows the Risk section as offline. The engine holds no user data or secrets.
 
 Verify: `curl https://YOUR-RENDER-URL/health` → `{"ok":true}`
 
@@ -119,7 +112,7 @@ Options, cheapest first:
 
 Link the live URL and the repo, and say what it is in one line:
 
-> **Motion** — portfolio analytics SaaS. React/Vite, Node/Express, PostgreSQL, Stripe, Claude API. JWT auth with rotating refresh tokens, subscription-gated AI analysis. *[live demo] · [github]*
+> **Motion** — portfolio analytics SaaS. React/Vite, Java/Spring Boot, C++ risk engine, PostgreSQL, Stripe, Claude API. Double-entry ledger, JWT auth with rotating refresh tokens, subscription-gated AI analysis. *[live demo] · [github]*
 
 Point the link at your Vercel URL. The demo button means whoever clicks it sees the actual product in one click, with no signup wall.
 

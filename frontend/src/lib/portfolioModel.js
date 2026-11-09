@@ -10,10 +10,9 @@ export const signedUsd = (n) =>
   `${n >= 0 ? "+" : "-"}${usd0.format(Math.abs(n))}`;
 
 /**
- * Client mirror of backend/utils/portfolioMath.js. The server recomputes this
- * independently for AI analysis and never trusts client numbers — this copy
- * exists only so the dashboard can render without a round trip. If you change
- * one, change the other.
+ * Weights, gains and totals for display. The inputs (shares, average cost,
+ * price) come from the server, which derives them from the ledger; this only
+ * does the arithmetic the charts need.
  */
 export function computePortfolio(rows, cash) {
   const positions = rows
@@ -66,23 +65,13 @@ export function computePortfolio(rows, cash) {
   };
 }
 
-/** Postgres returns NUMERIC columns as strings — normalize to numbers. */
+/** One holding as the API returns it: derived from the ledger, keyed by ticker. */
 export function normalizeHolding(h) {
   return {
-    id: h.id,
+    id: h.ticker,
     ticker: h.ticker || "",
     shares: Number(h.shares) || 0,
     cost: Number(h.cost) || 0,
     price: Number(h.price) || 0,
-    isDraft: false,
   };
-}
-
-/** A row is only worth persisting once it has a ticker and positive shares. */
-export function isSavableRow(row) {
-  return (
-    typeof row.ticker === "string" &&
-    row.ticker.trim().length > 0 &&
-    Number(row.shares) > 0
-  );
 }

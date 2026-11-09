@@ -34,14 +34,7 @@ App Runner over ECS Fargate here on purpose: Fargate needs a VPC, ALB, target gr
 7. Copy the **endpoint** — looks like `motion-db.abc123.us-west-1.rds.amazonaws.com`
 8. Click the DB's VPC security group → Inbound rules → Add rule → PostgreSQL (5432), Source: **My IP**
 
-Apply the schema from your laptop:
-
-```bash
-cd backend
-DATABASE_URL="postgres://USER:PASSWORD@YOUR-ENDPOINT:5432/motion" PGSSL=true npm run migrate
-```
-
-You should see the five tables listed back. If it hangs, the security group rule isn't letting your IP through.
+There is no schema step. The API applies its own database migrations (Flyway) every time it starts, so the tables are created on the first deploy. If the service later fails to start with a database timeout, the security group rule isn't letting it through.
 
 ---
 
@@ -79,11 +72,11 @@ Needs the AWS CLI installed and `aws configure` run once with an access key.
 
 | Variable | Value |
 |---|---|
-| `NODE_ENV` | `production` |
+| `APP_ENV` | `production` |
 | `PORT` | `4000` |
 | `DATABASE_URL` | your RDS connection string |
 | `PGSSL` | `true` |
-| `TRUST_PROXY` | `1` |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | `native` |
 | `COOKIE_SAMESITE` | `none` |
 | `JWT_ACCESS_SECRET` | generate a fresh one, not your local value |
 | `ANTHROPIC_API_KEY` | your key |

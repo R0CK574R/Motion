@@ -20,6 +20,13 @@ public record AppProperties(
 
   public record Stripe(String secretKey, String priceId, String webhookSecret) {}
 
+  /** Billing is optional: with no Stripe settings at all, fall back to blanks rather than null. */
+  public AppProperties {
+    if (stripe == null) {
+      stripe = new Stripe("", "", "");
+    }
+  }
+
   public boolean production() {
     return "production".equalsIgnoreCase(environment);
   }
