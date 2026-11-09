@@ -1,0 +1,40 @@
+# Every setting that differs between machines comes from an environment
+# variable; see .env.example for what each one means.
+server:
+  port: ${PORT:4000}
+  error:
+    whitelabel:
+      enabled: false
+
+spring:
+  application:
+    name: motion-api
+  flyway:
+    # Lets Flyway adopt a database that was created from the old schema.sql:
+    # it is recorded as already being at V1, and V2 onwards are applied.
+    baseline-on-migrate: true
+    baseline-version: "1"
+  jackson:
+    generator:
+      write-bigdecimal-as-plain: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+motion:
+  environment: ${APP_ENV:development}
+  app-url: ${APP_URL:http://localhost:5173}
+  database-url: ${DATABASE_URL:}
+  pg-ssl: ${PGSSL:false}
+  jwt-secret: ${JWT_ACCESS_SECRET:}
+  cookie-same-site: ${COOKIE_SAMESITE:lax}
+  bcrypt-strength: 12
+  auth-rate-limit-per-minute: 20
+  risk-engine-url: ${RISK_ENGINE_URL:}
+  anthropic-api-key: ${ANTHROPIC_API_KEY:}
+  anthropic-model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    price-id: ${STRIPE_PRICE_ID:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}

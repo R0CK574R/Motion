@@ -10,7 +10,6 @@ services:
       - "5432:5432"
     volumes:
       - motion_pgdata:/var/lib/postgresql/data
-      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U motion"]
       interval: 5s

@@ -1,25 +1,27 @@
-# NOTE for Apple Silicon (M1/M2/M3): Docker builds for your host architecture by
-# default, producing an arm64 image. AWS App Runner and ECS Fargate run x86_64
-# unless configured otherwise, and an arm64 image fails there with a confusing
-# "exec format error". Build with:
-#   docker build --platform linux/amd64 -t motion-api .
-FROM node:18-alpine
+# Stage 1: build the jar. Tests are not run here because they need a
+# database; CI runs them against a real Postgres before anything is deployed.
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /src
+# Copying the POM first lets Docker cache the dependency download until the
+# POM itself changes.
+COPY pom.xml .
+RUN mvn -B -q dependency:go-offline
+COPY src ./src
+RUN mvn -B -q -DskipTests package
 
+# Stage 2: a small runtime image with only a Java runtime and the jar.
+FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-
-# npm ci installs exactly what's in package-lock.json — reproducible builds.
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
-
-COPY . .
-
-ENV NODE_ENV=production
-# App Runner defaults to 8080; override with the PORT env var if needed.
+RUN addgroup -S motion && adduser -S motion -G motion
+COPY --from=build /src/target/motion-api.jar app.jar
+USER motion
 ENV PORT=4000
 EXPOSE 4000
 
-# Lets the orchestrator restart the container if the app wedges.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||4000)+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+# Lets the orchestrator restart the container if the app stops answering.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/health" || exit 1
 
-CMD ["node", "server.js"]
+# MaxRAMPercentage sizes the heap from the container's memory limit, which
+# matters on small free-tier instances.
+CMD ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
