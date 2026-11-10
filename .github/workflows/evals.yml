@@ -1,0 +1,78 @@
+name: AI evaluation
+
+# Asks the real model a fixed set of questions and scores the answers.
+#
+# Run by hand only (Actions tab -> AI evaluation -> Run workflow). It is never
+# triggered by a pull request, for two reasons: every run costs a little money,
+# and a pull request from a stranger must never be able to use the API key.
+#
+# Needs one repository secret, ANTHROPIC_API_KEY:
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Model to evaluate
+        default: claude-haiku-5-5
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    env:
+      # Exposed only to this job, as an environment variable. GitHub masks it
+      # in logs, and it is never written into a command line.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_MODEL: ${{ inputs.model }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the key is set
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Add a repository secret named ANTHROPIC_API_KEY (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+
+      - name: Create backend/.env on the runner
+        run: |
+          cp backend/.env.example backend/.env
+          python3 - <<'PY'
+          import os, re, secrets
+          path = "backend/.env"
+          text = open(path).read()
+          values = {
+              "JWT_ACCESS_SECRET": secrets.token_hex(48),
+              "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
+              "ANTHROPIC_MODEL": os.environ["ANTHROPIC_MODEL"],
+              # Let demo accounts reach the model for this run only.
+              "AI_DEMO_DAILY_LIMIT": "500",
+              "AI_DAILY_LIMIT_PER_USER": "500",
+          }
+          for key, value in values.items():
+              line = f"{key}={value}"
+              if re.search(rf"(?m)^{key}=", text):
+                  text = re.sub(rf"(?m)^{key}=.*$", lambda _: line, text)
+              else:
+                  text += f"\n{line}\n"
+          open(path, "w").write(text)
+          PY
+
+      - name: Start the stack
+        run: docker compose up --build --detach --wait --wait-timeout 300
+
+      - name: Run the evaluation
+        run: python3 evals/run.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-evaluation-report
+          path: evals/report.md
+          if-no-files-found: ignore
+
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs --tail 60 api risk

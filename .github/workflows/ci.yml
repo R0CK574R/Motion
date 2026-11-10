@@ -6,6 +6,13 @@ on:
   pull_request:
 
 jobs:
+  # Stops a pull request that contains anything shaped like a real credential.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-secrets.sh
+
   risk-engine:
     runs-on: ubuntu-latest
     defaults:

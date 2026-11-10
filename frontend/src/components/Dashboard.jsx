@@ -17,6 +17,7 @@ import { ThemeToggle, StatTile } from "./Chrome.jsx";
 import { PageShell } from "./Backdrop.jsx";
 import RiskPanel from "./RiskPanel.jsx";
 import LedgerPanel from "./LedgerPanel.jsx";
+import AskPanel from "./AskPanel.jsx";
 import {
   usd0,
   pct,
@@ -379,6 +380,8 @@ export default function Dashboard({ theme }) {
             </div>
 
             <RiskPanel t={t} refreshKey={riskKey} />
+
+            <AskPanel t={t} />
 
             {/* Analysis */}
             <div className="mt-6">

@@ -16,6 +16,8 @@ public record AppProperties(
     String riskEngineUrl,
     String anthropicApiKey,
     String anthropicModel,
+    int aiDailyLimitPerUser,
+    int aiDemoDailyLimit,
     Stripe stripe) {
 
   public record Stripe(String secretKey, String priceId, String webhookSecret) {}
