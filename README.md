@@ -1,13 +1,15 @@
 # Motion
 
-Portfolio analytics — see what a portfolio is actually made of. Allocation breakdown, concentration risk, and an AI pass that classifies holdings by sector and asset class and describes the portfolio's shape in plain language.
+Portfolio analytics built the way a bank keeps books. Every deposit and trade is posted to a double-entry ledger; holdings, cost basis and gains are derived from it. On top of that: allocation breakdown, a C++ risk engine (value at risk, stress tests), and an AI pass that classifies holdings and describes the portfolio's shape in plain language.
 
 Motion describes composition. It does not give investment advice, and never tells anyone what to buy, sell, or hold — that constraint is enforced in the AI system prompt, not just the footer.
 
 ```
 motion/
-├── backend/          Node/Express + Postgres API — auth, portfolio storage, AI proxy, Stripe
+├── backend/          Java 21 + Spring Boot API: auth, double-entry ledger, audit log, AI proxy, Stripe
+├── risk-engine/      C++17 risk library, served to the API over HTTP
 ├── frontend/         React + Vite dashboard
+├── e2e/              Browser test of the whole stack (Playwright)
 └── docker-compose.yml
 ```
 
@@ -15,32 +17,49 @@ motion/
 
 | Piece | State |
 |---|---|
-| Backend auth (JWT + rotated refresh cookie, revocation) | Working, smoke-tested end to end |
-| Per-user portfolio storage (Postgres) | Working, smoke-tested |
+| Backend auth (JWT + rotated refresh cookie, reuse detection, rate limiting) | Working, tested in CI |
+| Double-entry ledger (append-only, idempotent, reversals) | Working, tested in CI |
+| Audit log and admin role | Working, tested in CI |
 | Subscription gating on the AI endpoint | Working (returns 402 without an active sub) |
-| Stripe checkout / portal / webhook | Written, needs your Stripe keys to exercise |
+| Stripe checkout / portal / webhook | Webhook tested with signed events; checkout and portal need your Stripe keys to exercise |
 | Frontend dashboard + adaptive theme | Working |
 | Carved-stone cathedral backdrop (WebGL2 shaders, line-art fallback) | Working |
 | Aperture logo intro (WebGL2, once per session, skippable) | Working |
 | One-click demo mode (no signup wall) | Working |
 | C++ risk engine: value at risk, expected shortfall, risk contributions, stress tests | Working, unit-tested, on an illustrative model (no live data yet) |
-| CI (GitHub Actions): engine build + C++ and API tests, frontend build | Set up |
+| CI (GitHub Actions): backend tests on Postgres, engine tests, frontend build, full-stack browser test | Running on every pull request |
 | Login / register / session persistence | Working |
 | Frontend wired to the backend (auth, persistence, paywall) | Working |
 | Live market prices | Not built — prices are entered by hand |
 | Deployment | Not deployed |
 
-The backend was tested against a real Postgres instance: register → login → refresh with rotation → logout revocation → per-user holdings CRUD → subscription-gated analysis. All passed.
+The backend tests run against a real Postgres in CI, because the ledger's guarantees are enforced by database triggers. A separate job starts the whole stack and drives it with a browser.
 
 ## How it fits together
 
 The frontend holds the access token **in memory only** — never `localStorage`, which any XSS payload can read. The session survives a page reload via the httpOnly refresh cookie: on mount the app calls `/api/auth/refresh`, and a single-flight refresh transparently retries any request that 401s.
 
-Portfolio edits autosave on an 800 ms debounce. New rows stay local until they have a ticker and share count, so half-typed input never reaches the database. Before running the X-ray the client flushes pending saves first — the server analyzes what's in the database, so unsaved edits would otherwise produce a reading of a stale portfolio.
+Nothing about a portfolio is edited in place. The dashboard records transactions (deposit, withdraw, buy, sell) and then asks the server for the resulting cash and holdings, which it derives from the ledger. The only directly editable number is a ticker's current price, which is market data rather than a money movement.
 
-The AI call goes to `POST /api/analysis`, which holds the Anthropic key server-side, recomputes the portfolio from the database rather than trusting client numbers, and returns 402 without an active subscription. The paywall is enforced on the server, not hidden in the UI.
+The AI call goes to `POST /api/analysis`, which holds the Anthropic key server-side, rebuilds the portfolio from the ledger rather than trusting client numbers, and returns 402 without an active subscription. The paywall is enforced on the server, not hidden in the UI.
 
-One note on Postgres: `NUMERIC` columns come back as **strings** (`"25.000000"`), so `lib/portfolioModel.js` normalizes them to numbers on load. Skip that and you get string concatenation instead of arithmetic.
+## The ledger
+
+A portfolio's state is never stored. It is the sum of an append-only journal:
+
+| Transaction | Debit | Credit |
+|---|---|---|
+| Deposit $1,000 | Cash 1,000 | Contributions 1,000 |
+| Buy 10 AAPL at $150 | Securities (AAPL) 1,500 | Cash 1,500 |
+| Sell 5 AAPL at $200 (average cost $150) | Cash 1,000 | Securities (AAPL) 750, Realized gain 250 |
+
+- **Every transaction balances.** A deferred constraint trigger in Postgres rejects any transaction whose entries do not sum to zero, so no application bug can leave the books uneven.
+- **Nothing is edited or deleted.** Triggers refuse `UPDATE` and `DELETE` on the journal. A mistake is corrected by posting a reversal, and history shows both.
+- **No double spending.** Each posting locks the portfolio row first, so two simultaneous sells cannot both sell the same shares. A test fires six at once and checks that exactly one succeeds.
+- **Retries are safe.** A request with an `Idempotency-Key` header is recorded once however many times it is sent.
+- **Money is exact.** Amounts are `BigDecimal` in Java and `NUMERIC` in Postgres, rounded half-to-even to the cent. No floating point touches a balance.
+
+Details and the API are in [`backend/README.md`](backend/README.md).
 
 ## The backdrop
 

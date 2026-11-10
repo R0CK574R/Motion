@@ -1,0 +1,13 @@
+# Settings for the test suite. Tests need a real Postgres because the ledger's
+# guarantees (balanced entries, append-only) are enforced by database triggers.
+motion:
+  database-url: ${TEST_DATABASE_URL:postgres://motion:motion@localhost:5432/motion_test}
+  jwt-secret: test-only-secret-test-only-secret-test-only-secret
+  bcrypt-strength: 4
+  auth-rate-limit-per-minute: 100000
+  risk-engine-url: ""
+  anthropic-api-key: ""
+  stripe:
+    secret-key: sk_test_not_a_real_key
+    price-id: price_test
+    webhook-secret: whsec_test_secret

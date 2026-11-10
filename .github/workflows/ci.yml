@@ -26,6 +26,37 @@ jobs:
       - name: API tests
         run: python -m pytest service/tests
 
+  backend:
+    runs-on: ubuntu-latest
+    # The ledger's guarantees are enforced by database triggers, so the tests
+    # run against a real Postgres rather than an in-memory stand-in.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: motion
+          POSTGRES_PASSWORD: motion
+          POSTGRES_DB: motion_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U motion"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build and test
+        run: mvn -B verify
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -40,3 +71,116 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  # The whole stack in one job: Postgres, the C++ risk engine, the Java API
+  # and the built frontend, driven by a real browser.
+  e2e:
+    # Pinned: Playwright supports a fixed list of Ubuntu releases.
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: motion
+          POSTGRES_PASSWORD: motion
+          POSTGRES_DB: motion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U motion"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://motion:motion@localhost:5432/motion
+      JWT_ACCESS_SECRET: ci-only-secret-ci-only-secret-ci-only-secret-ci-only
+      RISK_ENGINE_URL: http://127.0.0.1:8000
+      APP_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+
+      - name: Start the risk engine
+        working-directory: risk-engine
+        run: |
+          pip install -r requirements.txt
+          cmake -S . -B build -Dpybind11_DIR="$(python -m pybind11 --cmakedir)"
+          cmake --build build -j
+          cd service && nohup uvicorn app:app --port 8000 > ../../risk.log 2>&1 &
+
+      - name: Start the API
+        working-directory: backend
+        run: |
+          mvn -B -q -DskipTests package
+          nohup java -jar target/motion-api.jar > ../api.log 2>&1 &
+
+      - name: Start the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          nohup npx vite preview --port 5173 --strictPort > ../frontend.log 2>&1 &
+
+      - name: Wait for the services
+        run: |
+          for url in http://127.0.0.1:8000/health http://127.0.0.1:4000/health http://localhost:5173; do
+            for attempt in $(seq 1 60); do
+              curl -sf "$url" > /dev/null && break
+              if [ "$attempt" = 60 ]; then echo "$url did not come up"; exit 1; fi
+              sleep 2
+            done
+          done
+
+      - name: Run the browser test
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          node demo.mjs
+
+      - name: Show service logs
+        if: failure()
+        run: tail -n 80 api.log risk.log frontend.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshot
+          path: e2e/artifacts/
+          if-no-files-found: ignore
+
+  # Builds both Docker images and starts the stack exactly as
+  # `docker compose up` does locally, then calls it from outside.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create backend/.env
+        run: |
+          cp backend/.env.example backend/.env
+          sed -i "s/^JWT_ACCESS_SECRET=.*/JWT_ACCESS_SECRET=$(openssl rand -hex 48)/" backend/.env
+      - name: Build and start
+        run: docker compose up --build --detach --wait --wait-timeout 300
+      - name: Call the API through the running containers
+        run: |
+          curl -sf http://localhost:4000/health
+          TOKEN=$(curl -sf -X POST http://localhost:4000/api/auth/demo | python3 -c "import sys, json; print(json.load(sys.stdin)['accessToken'])")
+          curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/portfolio | python3 -c "import sys, json; p = json.load(sys.stdin); assert len(p['holdings']) == 7, p; print('portfolio ok:', len(p['holdings']), 'holdings, cash', p['cash'])"
+          curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/risk | python3 -c "import sys, json; r = json.load(sys.stdin); assert r['var']['parametric'] > 0, r; print('risk ok: 1-day 95% VaR', round(r['var']['parametric'], 2))"
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs --tail 80

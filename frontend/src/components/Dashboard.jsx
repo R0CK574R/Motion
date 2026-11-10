@@ -1,16 +1,12 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Aperture,
-  Plus,
-  X,
   Loader2,
   ScanLine,
   AlertTriangle,
   Eye,
   Info,
   LogOut,
-  Check,
-  CloudOff,
   Lock,
   CreditCard,
 } from "lucide-react";
@@ -20,6 +16,7 @@ import { useAuth } from "../auth/AuthContext.jsx";
 import { ThemeToggle, StatTile } from "./Chrome.jsx";
 import { PageShell } from "./Backdrop.jsx";
 import RiskPanel from "./RiskPanel.jsx";
+import LedgerPanel from "./LedgerPanel.jsx";
 import {
   usd0,
   pct,
@@ -27,7 +24,6 @@ import {
   signedUsd,
   computePortfolio,
   normalizeHolding,
-  isSavableRow,
 } from "../lib/portfolioModel.js";
 
 const PALETTE = [
@@ -37,8 +33,6 @@ const PALETTE = [
 const colorFor = (name, i, chart) =>
   name === "Cash" ? chart.cash : name === "Other" ? chart.other : PALETTE[i % PALETTE.length];
 
-const SAVE_DEBOUNCE_MS = 800;
-
 export default function Dashboard({ theme }) {
   const { mode, setMode, resolved, t } = theme;
   const { user, logout, isSubscribed, isDemo } = useAuth();
@@ -47,7 +41,6 @@ export default function Dashboard({ theme }) {
   const [cash, setCash] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
 
   const [analysis, setAnalysis] = useState(null);
   const [running, setRunning] = useState(false);
@@ -56,136 +49,27 @@ export default function Dashboard({ theme }) {
   const [billingBusy, setBillingBusy] = useState(false);
 
   const [view, setView] = useState("holdings");
-  // Bumped after every successful save so the risk section refetches.
+  // Bumped after every reload so the risk and activity sections refetch.
   const [riskKey, setRiskKey] = useState(0);
 
-  // Refs let the debounced flush read current values without stale closures.
-  const rowsRef = useRef(rows);
-  const cashRef = useRef(cash);
-  const dirtyRef = useRef({ rows: new Set(), cash: false });
-  const timerRef = useRef(null);
-  useEffect(() => { rowsRef.current = rows; }, [rows]);
-  useEffect(() => { cashRef.current = cash; }, [cash]);
-
   /* ---------------- Load ---------------- */
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await api("/api/portfolio");
-        if (cancelled) return;
-        setRows((data.holdings || []).map(normalizeHolding));
-        setCash(Number(data.cash) || 0);
-      } catch (err) {
-        if (!cancelled) setLoadError(err.message || "Could not load your portfolio.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  /* ---------------- Persist ---------------- */
-  const flush = useCallback(async () => {
-    const pendingRows = [...dirtyRef.current.rows];
-    const pendingCash = dirtyRef.current.cash;
-    dirtyRef.current = { rows: new Set(), cash: false };
-
-    if (!pendingRows.length && !pendingCash) return;
-
+  // Cash and holdings are derived from the ledger on the server, so after any
+  // transaction the dashboard simply asks for them again.
+  const reload = useCallback(async () => {
     try {
-      if (pendingCash) {
-        await api("/api/portfolio", {
-          method: "PUT",
-          body: JSON.stringify({ cash: Number(cashRef.current) || 0 }),
-        });
-      }
-
-      for (const rowId of pendingRows) {
-        const row = rowsRef.current.find((r) => r.id === rowId);
-        if (!row) continue;              // deleted while the timer was pending
-        if (!isSavableRow(row)) continue; // half-typed draft; wait for more input
-
-        const payload = {
-          ticker: row.ticker.trim().toUpperCase(),
-          shares: Number(row.shares),
-          cost: Number(row.cost) || 0,
-          price: Number(row.price) || 0,
-        };
-
-        if (row.isDraft) {
-          const created = await api("/api/portfolio/holdings", {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
-          // Swap the temporary local id for the real database id.
-          setRows((rs) =>
-            rs.map((r) => (r.id === rowId ? { ...normalizeHolding(created) } : r))
-          );
-        } else {
-          await api(`/api/portfolio/holdings/${row.id}`, {
-            method: "PUT",
-            body: JSON.stringify(payload),
-          });
-        }
-      }
-      setSaveState("saved");
+      const data = await api("/api/portfolio");
+      setRows((data.holdings || []).map(normalizeHolding));
+      setCash(Number(data.cash) || 0);
+      setLoadError("");
       setRiskKey((k) => k + 1);
     } catch (err) {
-      console.error("Save failed", err);
-      setSaveState("error");
+      setLoadError(err.message || "Could not load your portfolio.");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  const scheduleSave = useCallback(() => {
-    setSaveState("saving");
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
-  }, [flush]);
-
-  // Flush anything pending on unmount so edits aren't lost on navigation.
-  useEffect(() => () => clearTimeout(timerRef.current), []);
-
-  /* ---------------- Mutations ---------------- */
-  const updateRow = (id, field, val) => {
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
-    dirtyRef.current.rows.add(id);
-    scheduleSave();
-  };
-
-  const addRow = () => {
-    // Local-only until it has a ticker and shares — avoids junk rows in the DB.
-    const draft = {
-      id: `draft-${Date.now()}`,
-      ticker: "",
-      shares: "",
-      cost: "",
-      price: "",
-      isDraft: true,
-    };
-    setRows((rs) => [...rs, draft]);
-  };
-
-  const delRow = async (id) => {
-    const row = rows.find((r) => r.id === id);
-    setRows((rs) => rs.filter((r) => r.id !== id));
-    dirtyRef.current.rows.delete(id);
-    if (!row || row.isDraft) return; // never persisted, nothing to delete
-    try {
-      await api(`/api/portfolio/holdings/${id}`, { method: "DELETE" });
-      setSaveState("saved");
-      setRiskKey((k) => k + 1);
-    } catch (err) {
-      console.error("Delete failed", err);
-      setSaveState("error");
-    }
-  };
-
-  const updateCash = (val) => {
-    setCash(val);
-    dirtyRef.current.cash = true;
-    scheduleSave();
-  };
+  useEffect(() => { reload(); }, [reload]);
 
   /* ---------------- Derived ---------------- */
   const model = useMemo(() => computePortfolio(rows, cash), [rows, cash]);
@@ -231,11 +115,6 @@ export default function Dashboard({ theme }) {
     setNeedsSubscription(false);
     setRunning(true);
     try {
-      // The server analyzes what's in the database, so pending edits must land
-      // first or the AI would describe a stale portfolio.
-      clearTimeout(timerRef.current);
-      await flush();
-
       const parsed = await api("/api/analysis", { method: "POST" });
       setAnalysis(parsed);
       setView("sector");
@@ -275,16 +154,6 @@ export default function Dashboard({ theme }) {
 
   /* ---------------- Render ---------------- */
   const gainTone = model.gainTotal >= 0 ? t.up : t.down;
-  const inputBase =
-    "rounded-lg border px-3 py-2 font-mono text-sm transition-colors duration-500 focus:outline-none focus:ring-2";
-
-  const saveLabel = {
-    idle: null,
-    saving: { Icon: Loader2, text: "Saving…", spin: true },
-    saved: { Icon: Check, text: "Saved", spin: false },
-    error: { Icon: CloudOff, text: "Not saved", spin: false },
-  }[saveState];
-
   if (loading) {
     return (
       <PageShell t={t} className="flex items-center justify-center">
@@ -344,7 +213,7 @@ export default function Dashboard({ theme }) {
         {isDemo && (
           <div className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-colors duration-500 ${t.demoBadge}`}>
             <span className="text-sm">
-              You're viewing a demo portfolio. Edit anything you like — it won't affect
+              You're viewing a demo portfolio. Record any trades you like — it won't affect
               anyone else, and it's cleared automatically.
             </span>
             <button
@@ -363,95 +232,13 @@ export default function Dashboard({ theme }) {
           </div>
         )}
 
-        {/* Holdings editor */}
-        <section className={`mb-6 rounded-xl border p-5 transition-colors duration-500 ${t.card}`}>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className={`text-sm font-medium ${t.heading}`}>Your holdings</h2>
-            {saveLabel && (
-              <span className={`flex items-center gap-1.5 text-xs ${saveState === "error" ? t.down : t.faint}`}>
-                <saveLabel.Icon className={`h-3 w-3 ${saveLabel.spin ? "animate-spin" : ""}`} />
-                {saveLabel.text}
-              </span>
-            )}
-          </div>
-
-          <div
-            className={`mb-1 hidden grid-cols-12 gap-2 px-1 text-xs font-medium uppercase tracking-wide sm:grid ${t.faint}`}
-          >
-            <div className="col-span-3">Ticker</div>
-            <div className="col-span-2 text-right">Shares</div>
-            <div className="col-span-2 text-right">Avg cost</div>
-            <div className="col-span-2 text-right">Price</div>
-            <div className="col-span-2 text-right">Value</div>
-            <div className="col-span-1" />
-          </div>
-
-          <div className="space-y-2">
-            {rows.map((r) => {
-              const val = (Number(r.shares) || 0) * (Number(r.price) || 0);
-              return (
-                <div key={r.id} className="grid grid-cols-12 items-center gap-2">
-                  <input
-                    value={r.ticker}
-                    onChange={(e) => updateRow(r.id, "ticker", e.target.value)}
-                    placeholder="AAPL"
-                    aria-label="Ticker"
-                    className={`col-span-6 uppercase sm:col-span-3 ${inputBase} ${t.input}`}
-                  />
-                  {["shares", "cost", "price"].map((field, idx) => (
-                    <input
-                      key={field}
-                      type="number"
-                      value={r[field]}
-                      onChange={(e) => updateRow(r.id, field, e.target.value)}
-                      placeholder="0"
-                      aria-label={["Shares", "Average cost", "Current price"][idx]}
-                      className={`col-span-3 text-right tabular-nums sm:col-span-2 ${inputBase} ${t.input}`}
-                    />
-                  ))}
-                  <div className={`col-span-2 hidden text-right font-mono text-sm tabular-nums sm:block ${t.body}`}>
-                    {usd0.format(val)}
-                  </div>
-                  <button
-                    onClick={() => delRow(r.id)}
-                    className={`col-span-3 flex justify-end transition sm:col-span-1 ${t.deleteIdle}`}
-                    aria-label="Remove holding"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <button
-              onClick={addRow}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${t.ghostBtn}`}
-            >
-              <Plus className="h-4 w-4" /> Add holding
-            </button>
-            <div className="flex items-center gap-2">
-              <span className={`text-sm ${t.muted}`}>Cash</span>
-              <div className={`flex items-center rounded-lg border px-3 transition-colors duration-500 ${t.input}`}>
-                <span className={`font-mono text-sm ${t.faint}`}>$</span>
-                <input
-                  type="number"
-                  value={cash}
-                  onChange={(e) => updateCash(e.target.value)}
-                  aria-label="Cash balance"
-                  className="w-28 bg-transparent py-2 text-right font-mono text-sm tabular-nums focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
-        </section>
+        <LedgerPanel t={t} rows={rows} cash={cash} refreshKey={riskKey} onChanged={reload} />
 
         {!hasData ? (
           <div
             className={`rounded-xl border border-dashed p-10 text-center transition-colors duration-500 ${t.cardDashed} ${t.muted}`}
           >
-            Add a holding above to see your breakdown.
+            Record a deposit and a buy above to see your breakdown.
           </div>
         ) : (
           <>
@@ -685,8 +472,8 @@ export default function Dashboard({ theme }) {
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             Motion is an analytics tool, not investment advice. It describes what your portfolio is
-            made of — it never tells you what to buy, sell, or hold. Prices are the ones you enter,
-            not live market data. Classifications are AI-generated and may contain errors.
+            made of — it never tells you what to buy, sell, or hold. Prices are the last trade or the ones you
+            enter, not live market data. Classifications are AI-generated and may contain errors.
           </span>
         </div>
       </div>

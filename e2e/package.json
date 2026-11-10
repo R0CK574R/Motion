@@ -1,0 +1,13 @@
+{
+  "name": "motion-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Browser test of the whole stack: frontend, Java API, Postgres and the C++ risk engine.",
+  "scripts": {
+    "test": "node demo.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.65.0"
+  }
+}

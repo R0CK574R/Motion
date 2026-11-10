@@ -13,6 +13,7 @@ node_modules/
 .pnp.js
 
 # ---- Builds ----
+target/
 dist/
 build/
 .vite/
