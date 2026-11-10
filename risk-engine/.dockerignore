@@ -1,0 +1,4 @@
+build/
+service/*.so
+**/__pycache__/
+.pytest_cache/

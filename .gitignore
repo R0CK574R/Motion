@@ -17,6 +17,11 @@ dist/
 build/
 .vite/
 
+# ---- Risk engine (compiled module, Python caches) ----
+risk-engine/service/*.so
+__pycache__/
+.pytest_cache/
+
 # ---- Logs ----
 npm-debug.log*
 yarn-debug.log*

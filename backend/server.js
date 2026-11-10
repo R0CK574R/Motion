@@ -9,6 +9,7 @@ const authRoutes = require("./routes/auth");
 const portfolioRoutes = require("./routes/portfolio");
 const analysisRoutes = require("./routes/analysis");
 const billingRoutes = require("./routes/billing");
+const riskRoutes = require("./routes/risk");
 const { handleWebhook } = require("./routes/billing");
 
 const app = express();
@@ -43,6 +44,7 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/analysis", analysisRoutes);
+app.use("/api/risk", riskRoutes);
 app.use("/api/billing", billingRoutes); // checkout + portal (webhook already mounted above)
 
 app.use((req, res) => {
