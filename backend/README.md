@@ -8,7 +8,8 @@ src/main/java/com/motion/
 ├── ledger/      LedgerRules (pure bookkeeping), LedgerService, LedgerRepository
 ├── portfolio/   cash and holdings, derived from the ledger
 ├── risk/        calls the C++ risk engine
-├── analysis/    AI portfolio description (paid feature)
+├── ai/          ask-your-portfolio and risk memo: model client, tools, guardrails, call log
+├── analysis/    AI classification of holdings (paid feature)
 ├── billing/     Stripe checkout, portal and webhook
 ├── audit/       append-only audit log
 ├── common/      error format, rate limiting, health check
@@ -46,6 +47,8 @@ The tests need a real Postgres because the ledger's guarantees are enforced by d
 - `LedgerRulesTest`: the bookkeeping rules on their own, no database.
 - `ApiIntegrationTest`: every endpoint through the real HTTP and security layers, including a concurrency test and attempts to tamper with the journal directly in SQL.
 - `RateLimitTest`: sign-in throttling.
+- `AiGuardsTest`: the figure check and the advice filter on their own.
+- `AiIntegrationTest`: the AI endpoints with the model replaced by a script, so each test can make "the model" invent a number, give advice, call a tool that does not exist, or never stop.
 
 ## API
 
@@ -66,7 +69,11 @@ All errors have the shape `{"error": "message", "code": "OPTIONAL_CODE"}`.
 | POST | `/api/ledger/transactions/{id}/reversal` | Undo a transaction by posting its mirror image |
 | GET | `/api/ledger/trial-balance` | Per-account totals; they always sum to zero |
 | GET | `/api/risk` | Value at risk, expected shortfall, stress tests (from the C++ engine) |
-| POST | `/api/analysis` | AI description; needs an active subscription (402 otherwise) |
+| POST | `/api/analysis` | AI classification of holdings; needs an active subscription (402 otherwise) |
+| GET | `/api/ai/status` | Whether the caller gets live answers, sample answers, or needs a subscription |
+| POST | `/api/ai/ask` | Answer a question about the caller's portfolio |
+| POST | `/api/ai/memo` | Write a short risk memo |
+| GET | `/api/ai/calls` | The caller's recent AI requests and what the checks found |
 | POST | `/api/billing/create-checkout-session` | Start a Stripe subscription |
 | POST | `/api/billing/create-portal-session` | Manage or cancel it |
 | POST | `/api/billing/webhook` | Stripe events, verified by signature |
@@ -113,6 +120,18 @@ Four accounts per portfolio. Entry amounts are signed: a debit is positive, a cr
 
 **Known limits.** Balances are computed by summing every entry each time, which is fine at this scale; a busier system would keep periodic snapshots. There are no fees, dividends, stock splits or multiple currencies yet.
 
+## How the AI layer works
+
+`ModelClient` is the only interface to a language model; `AnthropicModelClient` implements it against the Claude Messages API, and tests swap in a scripted fake.
+
+1. **Access** (`AiService.access`). Real accounts need an active subscription and are capped per day. Demo accounts get `SampleAnswers` (templated from real data, no model call) unless `AI_DEMO_DAILY_LIMIT` is above zero.
+2. **Tool loop.** The model is sent the question and four read-only tool definitions (`AiTools`). When it asks for a tool, the server runs it for the caller and returns the JSON. A failing or unknown tool is reported back as an error result. The loop stops after six model calls.
+3. **Advice filter** (`AdviceGuard`). The finished text is scanned for prescriptive wording; a hit replaces the answer with a fixed explanation.
+4. **Figure check** (`GroundingVerifier`). Every number in the answer must match a number in the tool results or the question, at the precision the answer used. A miss triggers one rewrite request; a second miss is returned to the client in `checks.ungroundedFigures`.
+5. **Log** (`AiCallLog`, table `ai_calls`). Model, prompt version, tools, tokens, latency, both check results and any error. The API key is never written anywhere.
+
+Tools round figures once (cents for money, one decimal for percentages) so the model can quote them as given.
+
 ## Security
 
 - **Tokens.** Access tokens are JWTs (HS256) valid for 15 minutes and kept in browser memory. The refresh token is 48 random bytes in an httpOnly cookie scoped to `/api/auth`; only its SHA-256 hash is stored. Each refresh rotates it, and a rotated token replayed later is treated as theft and ends all of that user's sessions.
@@ -120,7 +139,8 @@ Four accounts per portfolio. Entry amounts are signed: a debit is positive, a cr
 - **Rate limiting.** Sign-in, registration and demo creation are capped per IP address (20 a minute, in memory, single instance).
 - **Authorization.** Every ledger query is scoped to the caller's own portfolio; another user's transaction id returns 404. The role is a claim in the token, and `/api/admin/**` requires `ADMIN`.
 - **Stripe webhooks** are trusted only if the signature over the raw request body verifies.
-- **Secrets** come from environment variables and are never sent to the browser. See `.env.example`.
+- **Secrets** come from environment variables and are never sent to the browser. See `.env.example`. `scripts/check-secrets.sh` runs in CI and fails a pull request containing anything shaped like a real credential.
+- **The AI provider key** is sent only as a header to the provider. Errors are logged by HTTP status alone, never with headers or bodies.
 
 Not built yet: two-factor sign-in, email verification and password reset.
 

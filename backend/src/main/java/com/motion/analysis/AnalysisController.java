@@ -3,17 +3,17 @@ package com.motion.analysis;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.motion.ai.AiCallLog;
+import com.motion.ai.ModelClient;
 import com.motion.audit.AuditService;
 import com.motion.auth.AuthService;
 import com.motion.auth.CurrentUser;
 import com.motion.common.ApiException;
-import com.motion.config.AppProperties;
 import com.motion.portfolio.PortfolioService;
 import com.motion.portfolio.PortfolioService.HoldingView;
 import com.motion.portfolio.PortfolioService.PortfolioView;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -21,14 +21,10 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 
 /**
  * POST /api/analysis: an AI-written description of the portfolio's
@@ -40,6 +36,8 @@ import org.springframework.web.client.RestClientException;
 public class AnalysisController {
 
   private static final Logger log = LoggerFactory.getLogger(AnalysisController.class);
+
+  private static final String PROMPT_VERSION = "analysis-v1";
 
   private static final String SYSTEM_PROMPT =
       """
@@ -58,24 +56,22 @@ public class AnalysisController {
   private final PortfolioService portfolio;
   private final AuditService audit;
   private final ObjectMapper json;
-  private final AppProperties props;
-  private final RestClient http;
+  private final ModelClient model;
+  private final AiCallLog calls;
 
   public AnalysisController(
       AuthService auth,
       PortfolioService portfolio,
       AuditService audit,
       ObjectMapper json,
-      AppProperties props) {
+      ModelClient model,
+      AiCallLog calls) {
     this.auth = auth;
     this.portfolio = portfolio;
     this.audit = audit;
     this.json = json;
-    this.props = props;
-    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-    factory.setConnectTimeout(Duration.ofSeconds(5));
-    factory.setReadTimeout(Duration.ofSeconds(60));
-    this.http = RestClient.builder().requestFactory(factory).build();
+    this.model = model;
+    this.calls = calls;
   }
 
   @PostMapping("/api/analysis")
@@ -95,7 +91,7 @@ public class AnalysisController {
           "An active subscription is required for this feature.",
           "SUBSCRIPTION_REQUIRED");
     }
-    if (AppProperties.blank(props.anthropicApiKey())) {
+    if (!model.configured()) {
       throw new ApiException(
           HttpStatus.INTERNAL_SERVER_ERROR, "Server is not configured with an AI provider key.");
     }
@@ -105,45 +101,49 @@ public class AnalysisController {
       throw ApiException.badRequest("Add at least one holding before running analysis.");
     }
 
-    Map<String, Object> request =
-        Map.of(
-            "model", props.anthropicModel(),
-            "max_tokens", 1000,
-            "system", SYSTEM_PROMPT,
-            "messages", List.of(Map.of("role", "user", "content", describe(view))));
-
-    JsonNode response;
+    long started = System.nanoTime();
+    ModelClient.Response response;
     try {
       response =
-          http.post()
-              .uri("https://api.anthropic.com/v1/messages")
-              .contentType(MediaType.APPLICATION_JSON)
-              .header("x-api-key", props.anthropicApiKey())
-              .header("anthropic-version", "2023-06-01")
-              .body(request)
-              .retrieve()
-              .body(JsonNode.class);
-    } catch (RestClientException e) {
-      log.error("AI provider request failed: {}", e.getMessage());
+          model.send(
+              new ModelClient.Request(
+                  SYSTEM_PROMPT, List.of(ModelClient.Message.user(describe(view))), List.of(), 1000));
+    } catch (ModelClient.ModelException e) {
+      logCall(userId, "error", response(0, 0), started, e.getMessage());
       throw new ApiException(HttpStatus.BAD_GATEWAY, "AI provider request failed.");
     }
 
-    StringBuilder text = new StringBuilder();
-    if (response != null) {
-      for (JsonNode block : response.path("content")) {
-        if ("text".equals(block.path("type").asText())) {
-          text.append(block.path("text").asText()).append('\n');
-        }
-      }
-    }
-    String clean = text.toString().replaceAll("(?i)```json", "").replace("```", "").trim();
+    String text = response.text();
+    String clean = text.replaceAll("(?i)```json", "").replace("```", "").trim();
     try {
       JsonNode parsed = json.readTree(clean);
+      if (parsed == null || !parsed.isObject()) {
+        logCall(userId, "error", response, started, "The model's reply was not a JSON object.");
+        throw new ApiException(HttpStatus.BAD_GATEWAY, "AI response was not valid JSON.");
+      }
       audit.record(userId, "ANALYSIS_RUN", Map.of("holdings", view.holdings().size()));
+      logCall(userId, "ok", response, started, null);
       return parsed;
     } catch (JsonProcessingException e) {
       log.error("AI response was not valid JSON");
+      logCall(userId, "error", response, started, "The model's reply was not valid JSON.");
       throw new ApiException(HttpStatus.BAD_GATEWAY, "AI response was not valid JSON.");
+    }
+  }
+
+  private static ModelClient.Response response(int inputTokens, int outputTokens) {
+    return new ModelClient.Response(List.of(), "", inputTokens, outputTokens);
+  }
+
+  private void logCall(UUID userId, String status, ModelClient.Response response, long started, String error) {
+    try {
+      calls.record(
+          new AiCallLog.Entry(
+              userId, false, "analysis", PROMPT_VERSION, model.model(), status, null, null, List.of(), 1,
+              response.inputTokens(), response.outputTokens(), (System.nanoTime() - started) / 1_000_000,
+              null, List.of(), false, error));
+    } catch (RuntimeException e) {
+      log.error("Could not write the AI call log: {}", e.getMessage());
     }
   }
 

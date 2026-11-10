@@ -68,6 +68,23 @@ try {
     await page.getByText("2008 financial crisis").waitFor();
   });
 
+  await step("ask your portfolio answers from the ledger's own numbers", async () => {
+    await page.getByRole("button", { name: "What is my largest position?" }).click();
+    const answer = page.getByTestId("ai-answer");
+    await answer.filter({ hasText: "Your largest position is VOO, worth $13,625.00" }).waitFor();
+    await answer.filter({ hasText: "19.7%" }).waitFor();
+    await answer.filter({ hasText: "Sample answer" }).waitFor();
+    await answer.filter({ hasText: "Your positions" }).waitFor();
+  });
+
+  await step("risk memo is written from the same data", async () => {
+    await page.getByRole("button", { name: "Write risk memo" }).click();
+    const memo = page.getByTestId("ai-memo");
+    await memo.filter({ hasText: "Portfolio risk memo" }).waitFor();
+    await memo.filter({ hasText: "$69,065.00" }).waitFor();
+    await memo.filter({ hasText: "2008 financial crisis" }).waitFor();
+  });
+
   await step("deposit cash", async () => {
     await record("Deposit", { Amount: 1000 });
     await expectCash("$7,500.00");

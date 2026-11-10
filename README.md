@@ -10,6 +10,7 @@ motion/
 ├── risk-engine/      C++17 risk library, served to the API over HTTP
 ├── frontend/         React + Vite dashboard
 ├── e2e/              Browser test of the whole stack (Playwright)
+├── evals/            Live evaluation of the AI features against the real model
 └── docker-compose.yml
 ```
 
@@ -20,14 +21,16 @@ motion/
 | Backend auth (JWT + rotated refresh cookie, reuse detection, rate limiting) | Working, tested in CI |
 | Double-entry ledger (append-only, idempotent, reversals) | Working, tested in CI |
 | Audit log and admin role | Working, tested in CI |
-| Subscription gating on the AI endpoint | Working (returns 402 without an active sub) |
+| Subscription gating on the AI endpoints | Working (returns 402 without an active sub) |
+| Ask your portfolio and risk memo (AI with tools, figure check, advice filter, call log) | Working with a scripted model in CI; not yet run against the real model |
+| AI evaluation suite (18 live cases) | Written; needs your API key to run |
 | Stripe checkout / portal / webhook | Webhook tested with signed events; checkout and portal need your Stripe keys to exercise |
 | Frontend dashboard + adaptive theme | Working |
 | Carved-stone cathedral backdrop (WebGL2 shaders, line-art fallback) | Working |
 | Aperture logo intro (WebGL2, once per session, skippable) | Working |
 | One-click demo mode (no signup wall) | Working |
 | C++ risk engine: value at risk, expected shortfall, risk contributions, stress tests | Working, unit-tested, on an illustrative model (no live data yet) |
-| CI (GitHub Actions): backend tests on Postgres, engine tests, frontend build, full-stack browser test | Running on every pull request |
+| CI (GitHub Actions): backend tests on Postgres, engine tests, frontend build, full-stack browser test, Docker run, secret scan | Running on every pull request |
 | Login / register / session persistence | Working |
 | Frontend wired to the backend (auth, persistence, paywall) | Working |
 | Live market prices | Not built — prices are entered by hand |
@@ -76,6 +79,24 @@ The facade renders once per resize or theme change, never per frame, so it costs
 On a visitor's first load, Motion's aperture logo appears as a carved-stone iris, rendered in a single WebGL2 shader (`frontend/src/lib/apertureIntro.js`). It swings up to face the viewer, light sweeps across it, the six blades open from a black pupil, and the view flies through the opening into the app. The opening is transparent, so the real first screen shows through as the iris widens.
 
 It runs for 1.85 seconds and plays once per browser session. Any click, tap, or key skips it. It is skipped entirely for visitors who prefer reduced motion and on browsers without WebGL2. The blade geometry matches the lucide Aperture icon in the header: six blades around a flat-topped hexagon, each edge running on clockwise as the seam over the next blade.
+
+## The AI layer
+
+"Ask your portfolio" answers questions in plain English, and a second feature writes a one-page risk memo. The model is treated as an untrusted component:
+
+```
+question -> model -> asks for a tool -> server runs it on the caller's own data -> model writes an answer
+                                                                                      |
+                                              advice filter -> figure check -> shown, with what was checked
+```
+
+- **Tools, not memory.** The model has four read-only tools (positions, risk, stress tests, recent transactions). The user id comes from the caller's token, never from the model, so it cannot be talked into reading another account.
+- **Every figure is checked.** Before an answer is shown, each number in it must match a number in the tool results. An invented figure is sent back to the model once for a rewrite; if it survives, the answer is shown with the figure named as unverified.
+- **No advice.** The prompt forbids recommendations, and the finished answer is scanned again in code. An answer that reads as advice is replaced with a fixed explanation.
+- **Everything is logged.** Each request records the model, prompt version, tools used, tokens, latency and what both checks found.
+- **The key and the bill are protected.** The API key is read from an environment variable and never logged, stored or sent to a browser. Real accounts need a subscription and have a daily cap. Demo accounts get sample answers built from the same data without calling the model, unless a daily demo budget is set.
+
+The plumbing is tested in CI with a scripted model (one that invents numbers, gives advice, calls tools that do not exist, or never stops). Whether the real model behaves is a separate question, answered by the live suite in [`evals/`](evals/README.md).
 
 ## The risk engine
 
