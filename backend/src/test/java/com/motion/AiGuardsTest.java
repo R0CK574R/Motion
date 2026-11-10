@@ -81,7 +81,15 @@ class AiGuardsTest {
 
   @Test
   void everyUngroundedFigureIsReported() {
-    assertUngrounded("VOO is $13,625, but $1 and 55% are made up.", "$1", "55%");
+    assertUngrounded("VOO is $13,625, but $2 and 55% are made up.", "$2", "55%");
+  }
+
+  @Test
+  void knownLimitNumbersAreMatchedWithoutTheirUnits() {
+    // The check compares numbers, not what they measure. The evidence holds a
+    // horizon of 1 day, so "$1" is accepted although no dollar amount is 1.
+    // It catches invented figures, not a real figure attached to the wrong thing.
+    assertGrounded("That is $1.");
   }
 
   @Test

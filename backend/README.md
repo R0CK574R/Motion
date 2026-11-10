@@ -132,6 +132,8 @@ Four accounts per portfolio. Entry amounts are signed: a debit is positive, a cr
 
 Tools round figures once (cents for money, one decimal for percentages) so the model can quote them as given.
 
+**Known limits of the figure check.** It compares numbers, not what they measure: it catches a figure that appears nowhere in the data, but not a real figure attached to the wrong label (the right dollar amount next to the wrong ticker). It also rejects arithmetic the model does itself, even when correct, which is deliberate. The live evaluation suite is what measures how often answers are right overall.
+
 ## Security
 
 - **Tokens.** Access tokens are JWTs (HS256) valid for 15 minutes and kept in browser memory. The refresh token is 48 random bytes in an httpOnly cookie scoped to `/api/auth`; only its SHA-256 hash is stored. Each refresh rotates it, and a rotated token replayed later is treated as theft and ends all of that user's sessions.
