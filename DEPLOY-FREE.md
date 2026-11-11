@@ -87,7 +87,7 @@ Without this, CORS blocks every request from the frontend.
 
 Open your Vercel URL in a **private window**:
 
-1. Click **View demo — no signup**. First click may take 30–60s while Render wakes up.
+1. Click **Try the demo without signing up**. First click may take 30–60s while Render wakes up.
 2. You should land on a seeded 7-holding portfolio.
 3. Click **Run the X-ray** — it returns instantly with sector and asset-class breakdowns.
 4. Refresh the page. Still logged in? The cross-domain cookie is working.

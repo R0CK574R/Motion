@@ -5,9 +5,16 @@ export const usd0 = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 export const pct = (n) => `${(n * 100).toFixed(1)}%`;
-export const signedPct = (n) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
+export const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+// Signed figures follow accounting convention: a loss is written in
+// parentheses, ($1,245), the way it appears on a statement. Percentages use a
+// true minus sign so they never look like a hyphenated range.
+export const signedPct = (n) => `${n >= 0 ? "+" : "\u2212"}${Math.abs(n * 100).toFixed(1)}%`;
 export const signedUsd = (n) =>
-  `${n >= 0 ? "+" : "-"}${usd0.format(Math.abs(n))}`;
+  n >= 0 ? `+${usd0.format(n)}` : `(${usd0.format(Math.abs(n))})`;
+export const signedUsd2 = (n) =>
+  n >= 0 ? `+${usd2.format(n)}` : `(${usd2.format(Math.abs(n))})`;
 
 /**
  * Weights, gains and totals for display. The inputs (shares, average cost,

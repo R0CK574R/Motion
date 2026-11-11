@@ -50,7 +50,7 @@ async function record(type, fields) {
 try {
   await step("open the app and start the demo", async () => {
     await page.goto(APP_URL);
-    await page.getByText("View demo — no signup").click();
+    await page.getByText("Try the demo without signing up").click();
     await page.getByText("You're viewing a demo portfolio").waitFor();
   });
 
@@ -99,7 +99,7 @@ try {
 
   await step("the journal shows the debit and credit entries", async () => {
     await page.getByLabel("Show entries for Bought 2 JPM at $250.00").click();
-    await page.getByText("Securities · JPM").waitFor();
+    await page.getByText("Securities (JPM)").waitFor();
     await page.getByText("Books balance").waitFor();
   });
 
@@ -114,6 +114,16 @@ try {
     await expectCash("$7,500.00");
     await position("JPM").waitFor({ state: "detached" });
     await page.getByText("reversed").first().waitFor();
+  });
+
+  await step("the command palette runs commands from the keyboard", async () => {
+    await page.keyboard.press("Control+k");
+    await page.getByRole("dialog", { name: "Command palette" }).waitFor();
+    // Typed immediately: the palette must already have focus.
+    await page.keyboard.type("withdraw");
+    await page.keyboard.press("Enter");
+    await page.getByRole("dialog", { name: "Command palette" }).waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Record withdraw" }).waitFor();
   });
 
   await step("update a price", async () => {

@@ -109,7 +109,7 @@ export default function RiskPanel({ t, refreshKey }) {
     return () => { cancelled = true; };
   }, [confidence, horizon, refreshKey]);
 
-  const card = `rounded-xl border p-5 transition-colors duration-500 ${t.card}`;
+  const card = `rounded-lg border p-5 transition-colors duration-500 ${t.card}`;
   const tailShare = pct(1 - confidence).replace(".0", "");
   // Bars are scaled to the largest value on show so they use the full track.
   const barScale = risk
@@ -118,11 +118,11 @@ export default function RiskPanel({ t, refreshKey }) {
   const period = horizon === 1 ? "one trading day" : `${horizon} trading days`;
 
   return (
-    <div className="mt-6">
-      <div className={`mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${t.plaque}`}>
+    <div id="risk" tabIndex={-1} className="mt-6 outline-none">
+      <div className={`mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 ${t.plaque}`}>
         <div className={`flex items-center gap-2 ${t.heading}`}>
           <Activity className="h-4 w-4" />
-          <h2 className="text-sm font-medium">Risk</h2>
+          <h2 className="title">Risk</h2>
           {state === "loading" && <Loader2 className={`h-3.5 w-3.5 animate-spin ${t.faint}`} />}
         </div>
         <div className="flex items-center gap-2">
@@ -148,7 +148,7 @@ export default function RiskPanel({ t, refreshKey }) {
         <div className="mo-fade">
           <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatTile
-              label={`Value at risk · ${Math.round(confidence * 100)}%`}
+              label={`Value at risk, ${Math.round(confidence * 100)}%`}
               value={`${usd0.format(risk.var.monte_carlo)} (${pct(risk.var.monte_carlo_pct)})`}
               tone={t.heading}
               t={t}
@@ -159,13 +159,13 @@ export default function RiskPanel({ t, refreshKey }) {
               tone={t.heading}
               t={t}
             />
-            <StatTile label="Volatility · annual" value={pct(risk.volatility)} tone={t.heading} t={t} />
+            <StatTile label="Annual volatility" value={pct(risk.volatility)} tone={t.heading} t={t} />
             <StatTile label="Beta to market" value={risk.beta.toFixed(2)} tone={t.heading} t={t} />
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <section className={card}>
-              <h3 className={`mb-1 text-sm font-medium ${t.heading}`}>Simulated outcomes</h3>
+              <h3 className={`mb-1 title ${t.heading}`}>Simulated outcomes</h3>
               <p className={`mb-4 text-xs leading-relaxed ${t.muted}`}>
                 {risk.config.simulations.toLocaleString()} simulated results over {period}. The
                 shaded bars are the worst {tailShare}: losses beyond the value at risk of{" "}
@@ -180,7 +180,7 @@ export default function RiskPanel({ t, refreshKey }) {
             </section>
 
             <section className={card}>
-              <h3 className={`mb-1 text-sm font-medium ${t.heading}`}>Where the risk comes from</h3>
+              <h3 className={`mb-1 title ${t.heading}`}>Where the risk comes from</h3>
               <p className={`mb-4 text-xs leading-relaxed ${t.muted}`}>
                 Each position's share of the portfolio's risk (solid) against its share of the
                 money (outline). A solid bar longer than its outline means the position adds more
@@ -191,7 +191,7 @@ export default function RiskPanel({ t, refreshKey }) {
                   .sort((a, b) => b.risk_contribution - a.risk_contribution)
                   .map((p) => (
                     <div key={p.ticker} className="flex items-center gap-3">
-                      <div className="w-14 shrink-0 font-mono text-sm font-medium">{p.ticker}</div>
+                      <div className="w-14 shrink-0 tabular-nums text-sm font-medium">{p.ticker}</div>
                       <div className="relative h-3 flex-1">
                         <div
                           className={`absolute inset-y-0 left-0 rounded-full border ${t.toggleShell}`}
@@ -202,7 +202,7 @@ export default function RiskPanel({ t, refreshKey }) {
                           style={{ width: `${Math.max(2, (p.risk_contribution / barScale) * 100)}%` }}
                         />
                       </div>
-                      <div className={`w-28 shrink-0 text-right font-mono text-xs tabular-nums ${t.body}`}>
+                      <div className={`w-28 shrink-0 text-right tabular-nums text-xs ${t.body}`}>
                         {pct(p.risk_contribution)}
                         <span className={t.faint}> / {pct(p.weight)}</span>
                       </div>
@@ -213,7 +213,7 @@ export default function RiskPanel({ t, refreshKey }) {
           </div>
 
           <section className={`${card} mt-6`}>
-            <h3 className={`mb-1 text-sm font-medium ${t.heading}`}>Stress tests</h3>
+            <h3 className={`mb-1 title ${t.heading}`}>Stress tests</h3>
             <p className={`mb-4 text-xs leading-relaxed ${t.muted}`}>
               What today's portfolio would lose if each episode repeated, from peak to trough.
             </p>
@@ -230,8 +230,9 @@ export default function RiskPanel({ t, refreshKey }) {
                       style={{ width: `${Math.min(100, Math.max(2, Math.abs(s.pnl_pct) * 100))}%` }}
                     />
                   </div>
-                  <div className={`col-span-5 text-right font-mono text-sm tabular-nums sm:col-span-3 ${s.pnl < 0 ? t.down : t.up}`}>
-                    {signedUsd(s.pnl)} <span className="text-xs">({signedPct(s.pnl_pct)})</span>
+                  <div className={`col-span-5 text-right tabular-nums text-sm sm:col-span-3 ${s.pnl < 0 ? t.down : t.up}`}>
+                    {signedUsd(s.pnl)}
+                    <span className={`ml-2 text-xs ${t.muted}`}>{signedPct(s.pnl_pct)}</span>
                   </div>
                 </div>
               ))}
