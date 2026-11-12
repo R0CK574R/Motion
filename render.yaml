@@ -1,0 +1,68 @@
+# Render Blueprint: the API and the risk engine on Render's free plan.
+# Render reads this file when you choose New > Blueprint and pick this repo;
+# DEPLOY-FREE.md walks through it. The database is on Neon and the website
+# on Vercel, so neither appears here.
+#
+# Free instances sleep after 15 minutes without traffic and take about a
+# minute to wake; the website shows a "Starting the server" screen meanwhile.
+# Do not add an uptime pinger: two services kept awake all month would use
+# more than the 750 free instance hours a workspace gets.
+services:
+  - type: web
+    name: motion-api-r0ck574r
+    runtime: docker
+    plan: free
+    region: oregon # Next to the Neon database in AWS us-west-2.
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    # Deploy a commit only after its CI checks pass, and only when the API
+    # itself changed.
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: APP_ENV
+        value: production
+      # Trust the X-Forwarded-* headers set by Render's own proxy.
+      - key: SERVER_FORWARD_HEADERS_STRATEGY
+        value: native
+      # Asked for when the Blueprint is created: Neon's connection string,
+      # and the website's address (for example https://motion-r0ck574r.vercel.app).
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: RISK_ENGINE_URL
+        value: https://motion-risk-r0ck574r.onrender.com
+      - key: RISK_ENGINE_TOKEN
+        fromService:
+          type: web
+          name: motion-risk-r0ck574r
+          envVarKey: RISK_ENGINE_TOKEN
+      # Demo visitors get sample answers and never reach the model, so no
+      # Anthropic key is needed here.
+      - key: AI_DEMO_DAILY_LIMIT
+        value: "0"
+
+  - type: web
+    name: motion-risk-r0ck574r
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./risk-engine/Dockerfile
+    dockerContext: ./risk-engine
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - risk-engine/**
+    envVars:
+      # Free services cannot use Render's private network, so the engine is
+      # reachable from the internet; it answers only requests carrying this
+      # token, which the API above receives too.
+      - key: RISK_ENGINE_TOKEN
+        generateValue: true
