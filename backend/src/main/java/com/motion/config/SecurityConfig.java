@@ -45,6 +45,7 @@ public class SecurityConfig {
   /** Endpoints that work without an access token. */
   private static final String[] PUBLIC_PATHS = {
     "/health",
+    "/api/health",
     "/api/auth/register",
     "/api/auth/login",
     "/api/auth/refresh",

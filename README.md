@@ -31,11 +31,11 @@ motion/
 | Aperture logo intro (WebGL2, once per session, skippable) | Working |
 | One-click demo mode (no signup wall) | Working |
 | C++ risk engine: value at risk, expected shortfall, risk contributions, stress tests | Working, unit-tested, on an illustrative model (no live data yet) |
-| CI (GitHub Actions): backend tests on Postgres, engine tests, frontend build, full-stack browser test, Docker run, secret scan | Running on every pull request |
+| CI (GitHub Actions): backend tests on Postgres, engine tests, frontend build, full-stack browser test, Docker run, free-tier performance check, secret scan | Running on every pull request |
 | Login / register / session persistence | Working |
 | Frontend wired to the backend (auth, persistence, paywall) | Working |
 | Live market prices | Not built — prices are entered by hand |
-| Deployment | Not deployed |
+| Deployment (Render Blueprint, Vercel, Neon) | Ready for free hosting; not live yet. See [`DEPLOY-FREE.md`](DEPLOY-FREE.md) |
 
 The backend tests run against a real Postgres in CI, because the ledger's guarantees are enforced by database triggers. A separate job starts the whole stack and drives it with a browser.
 
@@ -44,6 +44,8 @@ The backend tests run against a real Postgres in CI, because the ledger's guaran
 The frontend holds the access token **in memory only** — never `localStorage`, which any XSS payload can read. The session survives a page reload via the httpOnly refresh cookie: on mount the app calls `/api/auth/refresh`, and a single-flight refresh transparently retries any request that 401s.
 
 Nothing about a portfolio is edited in place. The dashboard records transactions (deposit, withdraw, buy, sell) and then asks the server for the resulting cash and holdings, which it derives from the ledger. The only directly editable number is a ticker's current price, which is market data rather than a money movement.
+
+In production the website and the API share one origin: Vercel forwards `/api/*` to the API on Render. The refresh cookie is therefore first-party, which Safari requires, and the browser never makes a cross-origin call.
 
 The AI call goes to `POST /api/analysis`, which holds the Anthropic key server-side, rebuilds the portfolio from the ledger rather than trusting client numbers, and returns 402 without an active subscription. The paywall is enforced on the server, not hidden in the UI.
 
@@ -126,6 +128,10 @@ The API computes position values from the database and sends only those to the e
 
 There is no market-data feed yet, so the engine runs on an illustrative one-factor model (a beta and a volatility per ticker). The dashboard says so next to the numbers, and the limits are listed in the engine's README.
 
+## Running on a tenth of a CPU
+
+The free hosting tier gives each service 0.1 CPU and 512 MB, and puts it to sleep when idle, so every first visit is a cold start. A CI job (`scripts/free-tier-check.sh`) runs both services under exactly those limits and reports start time, latency and peak memory on every pull request. The first measurement put the API's cold start at about 80 seconds. The image now saves a class data sharing archive at build time, so classes arrive pre-parsed and pre-verified, and runs with only the quick JIT compiler and the serial collector; cold starts measure 26 to 41 seconds, and peak memory fell from 177 MB to 132 MB. The website covers the remaining wait with a "Starting the server" screen instead of failing.
+
 ## Quick start
 
 **Backend + database:**
@@ -140,8 +146,7 @@ docker compose up --build              # API on http://localhost:4000, plus Post
 ```bash
 cd frontend
 npm install
-cp .env.example .env
-npm run dev                            # http://localhost:5173
+npm run dev                            # http://localhost:5173, with /api forwarded to the API on :4000
 ```
 
 See [`backend/README.md`](backend/README.md) for the full API surface, environment variables, and Stripe setup.
@@ -149,10 +154,10 @@ See [`backend/README.md`](backend/README.md) for the full API surface, environme
 ## Before this can take real users
 
 1. **Live price data.** The biggest remaining gap. Prices are entered by hand, and a portfolio tool where you retype every price won't retain anyone past day one.
-2. **Deploy.** See [`DEPLOY-FREE.md`](DEPLOY-FREE.md) for the $0 path (Neon + Render + Vercel), or [`DEPLOY-AWS.md`](DEPLOY-AWS.md) for the AWS runbook — RDS, ECR, App Runner, and Amplify, with the cross-domain cookie and Apple Silicon build gotchas called out.
+2. **Deploy.** Everything is in place for the $0 path (Neon + Render + Vercel): [`DEPLOY-FREE.md`](DEPLOY-FREE.md) walks through it. [`DEPLOY-AWS.md`](DEPLOY-AWS.md) is the paid AWS runbook (RDS, ECR, App Runner, Amplify).
 3. **Stripe live mode.** Create the product/price in live mode, register the production webhook endpoint, and swap the keys.
-4. **SPA fallback.** Stripe returns users to `/billing/success?session_id=…`. Vite's dev server handles this automatically; a production static host needs a rewrite rule sending unknown paths to `index.html`.
-5. **Email verification and password reset.** Neither exists yet.
+4. **Email verification and password reset.** Neither exists yet.
+5. **Spring Boot 4.** The API is on Spring Boot 3.5.16, the last open-source release of the 3.5 line, whose free support ended in June 2026.
 
 ## Security notes
 

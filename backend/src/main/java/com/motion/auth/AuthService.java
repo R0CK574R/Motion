@@ -7,7 +7,6 @@ import com.motion.ledger.LedgerService;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,8 +46,19 @@ public class AuthService {
   private final TokenService tokens;
   private final LedgerService ledger;
   private final AuditService audit;
-  private final String dummyHash;
-  private final java.security.SecureRandom random = new java.security.SecureRandom();
+  // Compared against when the email is unknown, so a wrong email costs the
+  // same time as a wrong password and the two cannot be told apart. Built on
+  // first use: hashing takes seconds on a 0.1 CPU instance, and startup is
+  // what a visitor waits for when the server wakes.
+  private volatile String dummyHash;
+
+  /**
+   * Stored as the password hash of demo accounts. It is not a bcrypt hash,
+   * so no password ever matches it: demo accounts can only be entered
+   * through the demo endpoint. Skipping a pointless bcrypt keeps "Try the
+   * demo" fast on small instances.
+   */
+  static final String NO_PASSWORD = "!no-password";
 
   public AuthService(
       JdbcClient jdbc,
@@ -63,9 +73,6 @@ public class AuthService {
     this.tokens = tokens;
     this.ledger = ledger;
     this.audit = audit;
-    // Compared against when the email is unknown, so a wrong email costs the
-    // same time as a wrong password and the two cannot be told apart.
-    this.dummyHash = passwords.encode("not-a-real-password");
   }
 
   public Session register(String rawEmail, String password) {
@@ -106,7 +113,8 @@ public class AuthService {
                         rs.getString("role")))
             .optional();
 
-    boolean valid = passwords.matches(password, user.map(UserRow::passwordHash).orElse(dummyHash));
+    boolean valid =
+        passwords.matches(password, user.map(UserRow::passwordHash).orElseGet(this::dummyHash));
     if (user.isEmpty() || !valid) {
       audit.record(user.map(UserRow::id).orElse(null), "LOGIN_FAILURE", Map.of());
       throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password.");
@@ -205,19 +213,13 @@ public class AuthService {
    */
   public Session startDemo() {
     String email = "demo+" + UUID.randomUUID() + "@motion.invalid";
-    byte[] secret = new byte[24];
-    random.nextBytes(secret);
-    // An unguessable password nobody is told: the account is reachable only
-    // through this endpoint, never by signing in.
-    String hash = passwords.encode(HexFormat.of().formatHex(secret));
-
     UUID userId =
         tx.execute(
             status -> {
               jdbc.sql(
                       "DELETE FROM users WHERE is_demo = true AND created_at < now() - interval '24 hours'")
                   .update();
-              UUID id = createUser(email, hash, true);
+              UUID id = createUser(email, NO_PASSWORD, true);
               DemoPortfolio.seed(ledger, id);
               return id;
             });
@@ -245,6 +247,15 @@ public class AuthService {
                         : rs.getTimestamp("current_period_end").toInstant()))
         .optional()
         .orElseThrow(() -> ApiException.notFound("User not found."));
+  }
+
+  private String dummyHash() {
+    String hash = dummyHash;
+    if (hash == null) {
+      hash = passwords.encode("not-a-real-password");
+      dummyHash = hash;
+    }
+    return hash;
   }
 
   /** Must run inside a transaction: the three rows belong together. */

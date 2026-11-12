@@ -1,4 +1,12 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+/**
+ * The API is called on the same origin as the page: in production Vercel
+ * forwards /api/* to the API server (see vercel.json), and in development
+ * Vite does (see vite.config.js). Same-origin means the refresh cookie is a
+ * first-party cookie, which every browser keeps, including Safari, which
+ * blocks cookies between different sites. Set VITE_API_URL only to call an
+ * API on another origin directly.
+ */
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 /**
  * The access token lives in memory only — never localStorage/sessionStorage,
@@ -38,8 +46,8 @@ function buildRequest(path, options, withAuth) {
   if (withAuth && accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
-  // credentials: "include" is required for the httpOnly refresh cookie to be
-  // sent cross-origin (frontend :5173 -> API :4000).
+  // "include" also sends the refresh cookie if VITE_API_URL points at
+  // another origin; on the same origin it changes nothing.
   return fetch(`${API_URL}${path}`, { ...options, headers, credentials: "include" });
 }
 
@@ -61,6 +69,41 @@ export function refreshSession() {
       });
   }
   return refreshPromise;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Resolves once the API answers its health check.
+ *
+ * On free hosting the API sleeps after 15 idle minutes and takes a minute or
+ * more to wake. Meanwhile a request may hang, time out, or get a holding page
+ * instead of JSON, so only a real {"ok": true} counts as awake. `onSlow` is
+ * called once if the wait passes `slowAfterMs`, so the page can explain it.
+ */
+export async function waitForApi({ onSlow, slowAfterMs = 2500, giveUpAfterMs = 240000 } = {}) {
+  const started = Date.now();
+  const slowTimer = setTimeout(() => onSlow?.(), slowAfterMs);
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await fetch(`${API_URL}/api/health`, {
+          cache: "no-store",
+          signal: AbortSignal.timeout(30000),
+        });
+        const body = res.ok ? await res.json().catch(() => null) : null;
+        if (body?.ok === true) return;
+      } catch {
+        // Not up yet: refused, timed out, or not JSON.
+      }
+      if (Date.now() - started > giveUpAfterMs) {
+        throw new ApiError("The server didn't start.", 503, "API_UNREACHABLE");
+      }
+      await sleep(Math.min(1000 * 2 ** attempt, 5000));
+    }
+  } finally {
+    clearTimeout(slowTimer);
+  }
 }
 
 async function parseBody(res) {

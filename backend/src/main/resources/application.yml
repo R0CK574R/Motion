@@ -2,6 +2,11 @@
 # variable; see .env.example for what each one means.
 server:
   port: ${PORT:4000}
+  tomcat:
+    # Sized for a 512 MB instance; threads are only created when needed.
+    threads:
+      max: ${TOMCAT_MAX_THREADS:40}
+      min-spare: 4
   error:
     whitelabel:
       enabled: false
@@ -9,6 +14,16 @@ server:
 spring:
   application:
     name: motion-api
+  datasource:
+    # Bound onto the pool built in DataSourceConfig. Idle connections are
+    # closed after a minute, so a quiet API lets a scale-to-zero database
+    # (Neon) suspend instead of being held awake.
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: 0
+      idle-timeout: 60000
+      max-lifetime: 600000
+      keepalive-time: 0
   flyway:
     # Lets Flyway adopt a database that was created from the old schema.sql:
     # it is recorded as already being at V1, and V2 onwards are applied.
@@ -32,6 +47,9 @@ motion:
   bcrypt-strength: 12
   auth-rate-limit-per-minute: 20
   risk-engine-url: ${RISK_ENGINE_URL:}
+  # Shared secret sent to the risk engine, which refuses requests without it
+  # when it has one set too. Blank locally.
+  risk-engine-token: ${RISK_ENGINE_TOKEN:}
   anthropic-api-key: ${ANTHROPIC_API_KEY:}
   anthropic-model: ${ANTHROPIC_MODEL:claude-haiku-5-5}
   # AI requests one signed-in user may make per day.

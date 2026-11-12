@@ -1,0 +1,66 @@
+# Runs the browser test against the deployed site, the way a visitor would
+# use it: wakes the sleeping free-tier services, then starts the demo,
+# records trades, checks the risk section and reloads to test the session.
+# Start it from the Actions tab: Live check > Run workflow.
+name: Live check
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "The website's address, for example https://motion-r0ck574r.vercel.app"
+        required: true
+      risk_engine_url:
+        description: "The risk engine's address"
+        required: true
+        default: https://motion-risk-r0ck574r.onrender.com
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      # Free instances take about a minute to start, so both are woken up
+      # before the test, which allows a minute per step.
+      - name: Wake the API and the risk engine
+        env:
+          SITE: ${{ inputs.url }}
+          RISK: ${{ inputs.risk_engine_url }}
+        run: |
+          for url in "${SITE%/}/api/health" "${RISK%/}/health"; do
+            started=$(date +%s)
+            until curl -sf --max-time 30 "$url" > /dev/null; do
+              if [ $(( $(date +%s) - started )) -gt 300 ]; then
+                echo "$url did not answer within 5 minutes"
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "$url answered after $(( $(date +%s) - started )) s"
+          done
+
+      - name: Run the browser test against the live site
+        working-directory: e2e
+        env:
+          APP_URL: ${{ inputs.url }}
+          EXPECT_SECURITY_HEADERS: "1"
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          node demo.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-screenshot
+          path: e2e/artifacts/
+          if-no-files-found: ignore
