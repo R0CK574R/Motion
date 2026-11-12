@@ -31,11 +31,9 @@ export function ThemeToggle({ mode, setMode, resolved, t }) {
 
 export function StatTile({ label, value, tone, t }) {
   return (
-    <div className={`rounded-xl border p-4 transition-colors duration-500 ${t.card}`}>
-      <div className={`text-xs uppercase tracking-wide ${t.faint}`}>{label}</div>
-      <div className={`mt-1 font-mono text-lg font-semibold tabular-nums ${tone}`}>
-        {value}
-      </div>
+    <div className={`rounded-lg border p-4 transition-colors duration-500 ${t.card}`}>
+      <div className={`label ${t.muted}`}>{label}</div>
+      <div className={`mt-1 font-display text-2xl leading-tight ${tone}`}>{value}</div>
     </div>
   );
 }

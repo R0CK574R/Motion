@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   FileText,
@@ -9,6 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { api } from "../api/client.js";
+import { on } from "../lib/commands.js";
 
 /** The line under every answer saying how far it can be trusted, and why. */
 function Provenance({ result, t }) {
@@ -33,11 +34,11 @@ function Provenance({ result, t }) {
         </div>
       )}
       {sources.length > 0 && (
-        <div className={t.faint}>Figures from: {sources.map((s) => s.label).join(" · ")}</div>
+        <div className={t.faint}>Figures from: {sources.map((s) => s.label.toLowerCase()).join(", ")}</div>
       )}
       {!sample && model && (
-        <div className={`font-mono ${t.faint}`}>
-          {model} · {(usage.inputTokens + usage.outputTokens).toLocaleString()} tokens
+        <div className={t.faint}>
+          Model {model}, {(usage.inputTokens + usage.outputTokens).toLocaleString()} tokens
         </div>
       )}
     </div>
@@ -96,18 +97,32 @@ export default function AskPanel({ t }) {
     }
   }
 
+  // The command palette can ask a question, focus the box, or request a memo.
+  // Handlers are read through a ref so they always see the current state.
+  const inputRef = useRef(null);
+  const actions = useRef({});
+  actions.current = { ask, writeMemo };
+  useEffect(() => {
+    const off = [
+      on("ask", (text) => actions.current.ask(text)),
+      on("memo", () => actions.current.writeMemo()),
+      on("ask-focus", () => inputRef.current?.focus()),
+    ];
+    return () => off.forEach((unsubscribe) => unsubscribe());
+  }, []);
+
   if (!status) return null;
 
-  const card = `rounded-xl border p-5 transition-colors duration-500 ${t.card}`;
+  const card = `rounded-lg border p-5 transition-colors duration-500 ${t.card}`;
   const usable = status.mode === "live" || status.mode === "sample";
 
   return (
-    <div className="mt-6">
+    <div id="ask" tabIndex={-1} className="mt-6 outline-none">
       <section className={card}>
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <div className={`flex items-center gap-2 ${t.heading}`}>
             <MessageSquareText className="h-4 w-4" />
-            <h2 className="text-sm font-medium">Ask your portfolio</h2>
+            <h2 className="title">Ask your portfolio</h2>
           </div>
           {status.mode === "sample" && (
             <span className={`rounded-md border px-2 py-0.5 text-xs ${t.demoBadge}`}>Sample answers</span>
@@ -148,6 +163,7 @@ export default function AskPanel({ t }) {
                 className="flex gap-2"
               >
                 <input
+                  ref={inputRef}
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   maxLength={500}
@@ -210,7 +226,7 @@ export default function AskPanel({ t }) {
           <div className="space-y-4">
             {memo.sections.map((s) => (
               <div key={s.heading}>
-                <h3 className={`mb-1 text-xs font-medium uppercase tracking-wide ${t.faint}`}>{s.heading}</h3>
+                <h3 className={`mb-1 label ${t.faint}`}>{s.heading}</h3>
                 <p className={`text-sm leading-relaxed ${t.body}`}>{s.body}</p>
               </div>
             ))}

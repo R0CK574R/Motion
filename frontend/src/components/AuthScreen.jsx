@@ -59,7 +59,7 @@ export default function AuthScreen({ theme }) {
       <style>{`input::placeholder { color: ${t.placeholder}; }`}</style>
 
       <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-        <div className={`mb-6 flex items-center justify-between rounded-xl border px-4 py-3 transition-colors duration-500 ${t.plaque}`}>
+        <div className={`mb-6 flex items-center justify-between rounded-lg border px-4 py-3 transition-colors duration-500 ${t.plaque}`}>
           <div className="flex items-center gap-3">
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-500 ${t.logo}`}
@@ -67,15 +67,15 @@ export default function AuthScreen({ theme }) {
               <Aperture className="h-5 w-5" strokeWidth={2.2} />
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">Motion</h1>
-              <p className={`text-sm ${t.plaqueMuted}`}>Portfolio analytics.</p>
+              <h1 className="font-serif text-xl leading-tight">Motion</h1>
+              <p className={`text-sm ${t.plaqueMuted}`}>Portfolio analytics</p>
             </div>
           </div>
           <ThemeToggle mode={mode} setMode={setMode} resolved={resolved} t={t} />
         </div>
 
-        <div className={`rounded-xl border p-6 transition-colors duration-500 ${t.card}`}>
-          <h2 className={`mb-1 text-lg font-medium ${t.heading}`}>
+        <div className={`rounded-lg border p-6 transition-colors duration-500 ${t.card}`}>
+          <h2 className={`title mb-1 text-xl ${t.heading}`}>
             {isRegister ? "Create your account" : "Welcome back"}
           </h2>
           <p className={`mb-5 text-sm ${t.muted}`}>
@@ -151,7 +151,7 @@ export default function AuthScreen({ theme }) {
               </>
             ) : (
               <>
-                <PlayCircle className="h-4 w-4" /> View demo — no signup
+                <PlayCircle className="h-4 w-4" /> Try the demo without signing up
               </>
             )}
           </button>
@@ -169,9 +169,9 @@ export default function AuthScreen({ theme }) {
           </button>
         </div>
 
-        <p className={`mt-6 rounded-xl border px-4 py-3 text-center text-xs leading-relaxed transition-colors duration-500 ${t.plaque} ${t.plaqueMuted}`}>
+        <p className={`mt-6 rounded-lg border px-4 py-3 text-center text-xs leading-relaxed transition-colors duration-500 ${t.plaque} ${t.plaqueMuted}`}>
           Motion is an analytics tool, not investment advice. It describes what a
-          portfolio is made of — it never tells you what to buy, sell, or hold.
+          portfolio is made of and never tells you what to buy, sell or hold.
         </p>
       </div>
     </PageShell>

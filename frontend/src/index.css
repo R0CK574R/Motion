@@ -1,3 +1,61 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    font-family: theme("fontFamily.sans");
+    /* Lining figures everywhere; columns of numbers opt in to tabular width. */
+    font-variant-numeric: lining-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* One visible focus style for keyboard users, on every control. */
+  :focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Section headings. */
+  .title {
+    font-family: theme("fontFamily.serif");
+    font-size: 1.0625rem;
+    line-height: 1.3;
+    font-weight: 400;
+  }
+
+  /* Column headings and field labels: small and quiet, in sentence case. */
+  .label {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+  }
+
+  /* Accounting convention: a single rule above a total and a double rule below it. */
+  .total-row > * {
+    border-top-width: 1px;
+    border-bottom-width: 3px;
+    border-bottom-style: double;
+  }
+}
+
+/* Number inputs without browser spin buttons. */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+@keyframes mo-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.mo-fade { animation: mo-fade 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .mo-fade { animation: none; }
+}

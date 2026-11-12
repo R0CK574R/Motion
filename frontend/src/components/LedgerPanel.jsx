@@ -9,11 +9,10 @@ import {
   Undo2,
 } from "lucide-react";
 import { api } from "../api/client.js";
-import { usd0 } from "../lib/portfolioModel.js";
+import { usd0, usd2, pct, signedPct, signedUsd, signedUsd2 } from "../lib/portfolioModel.js";
+import { on } from "../lib/commands.js";
 
-const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const shares = (n) => Number(n).toLocaleString("en-US", { maximumFractionDigits: 6 });
-const signedUsd2 = (n) => `${n >= 0 ? "+" : "-"}${usd2.format(Math.abs(n))}`;
 
 const TYPES = [
   { key: "BUY", label: "Buy", trade: true },
@@ -94,56 +93,103 @@ function PriceCell({ row, t, inputBase, onChanged }) {
   );
 }
 
-function Positions({ t, rows, cash, inputBase, onChanged }) {
+/**
+ * The holdings as a ledger page: ruled rows, right-aligned figures, and a
+ * total closed off with a double rule. Shares and cost come from the journal;
+ * `model` adds each position's weight and unrealised return.
+ */
+export function Positions({ t, rows, cash, model, inputBase, onChanged }) {
+  const byTicker = new Map((model?.positions || []).map((p) => [p.ticker, p]));
+  const invested = rows.reduce((sum, r) => sum + r.shares * r.price, 0);
+  const th = `label px-2 pb-2 text-right ${t.faint}`;
+  const td = `px-2 py-2 text-right tabular-nums ${t.body}`;
+
   return (
-    <section className={`mb-6 rounded-xl border p-5 transition-colors duration-500 ${t.card}`}>
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className={`text-sm font-medium ${t.heading}`}>Positions</h2>
-        <div className={`text-sm ${t.muted}`}>
-          Cash{" "}
-          <span className={`font-mono tabular-nums ${t.body}`} data-testid="cash-balance">
-            {usd2.format(cash)}
-          </span>
-        </div>
-      </div>
+    <section id="positions" tabIndex={-1}
+      className={`rounded-lg border p-5 outline-none transition-colors duration-500 ${t.card}`}>
+      <h2 className={`title mb-3 ${t.heading}`}>Positions</h2>
 
       {rows.length === 0 ? (
-        <p className={`rounded-lg border border-dashed px-4 py-6 text-center text-sm ${t.toggleShell} ${t.muted}`}>
-          No positions yet. Deposit cash below, then record a buy.
-        </p>
-      ) : (
         <>
-          <div className={`mb-1 grid grid-cols-12 gap-2 px-1 text-xs font-medium uppercase tracking-wide ${t.faint}`}>
-            <div className="col-span-3">Ticker</div>
-            <div className="col-span-2 text-right">Shares</div>
-            <div className="col-span-2 text-right">Avg cost</div>
-            <div className="col-span-3 text-right sm:col-span-2">Price</div>
-            <div className="col-span-2 text-right sm:col-span-3">Value</div>
-          </div>
-          <div className="space-y-2">
-            {rows.map((r) => (
-              <div key={r.ticker} data-testid={`position-${r.ticker}`} className="grid grid-cols-12 items-center gap-2 px-1">
-                <div className="col-span-3 font-mono text-sm font-medium">{r.ticker}</div>
-                <div className={`col-span-2 text-right font-mono text-sm tabular-nums ${t.body}`}>
-                  {shares(r.shares)}
-                </div>
-                <div className={`col-span-2 text-right font-mono text-sm tabular-nums ${t.body}`}>
-                  {usd2.format(r.cost)}
-                </div>
-                <div className="col-span-3 sm:col-span-2">
-                  <PriceCell row={r} t={t} inputBase={inputBase} onChanged={onChanged} />
-                </div>
-                <div className={`col-span-2 text-right font-mono text-sm tabular-nums sm:col-span-3 ${t.body}`}>
-                  {usd0.format(r.shares * r.price)}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className={`mt-3 text-xs ${t.faint}`}>
-            Shares and cost come from your transactions and can't be edited directly. Price is the
-            last trade unless you update it.
+          <p className={`rounded-md border border-dashed px-4 py-6 text-center text-sm ${t.rule} ${t.muted}`}>
+            No positions yet. Deposit cash, then record a buy.
+          </p>
+          <p className={`mt-3 text-sm ${t.muted}`}>
+            Cash{" "}
+            <span className={`tabular-nums ${t.body}`} data-testid="cash-balance">{usd2.format(cash)}</span>
           </p>
         </>
+      ) : (
+        <div className="-mx-2 overflow-x-auto">
+          <table className="w-full border-collapse text-sm sm:min-w-[620px]">
+            <thead>
+              <tr>
+                <th scope="col" className={`label px-2 pb-2 text-left ${t.faint}`}>Ticker</th>
+                <th scope="col" className={`${th} hidden sm:table-cell`}>Shares</th>
+                <th scope="col" className={`${th} hidden sm:table-cell`}>Avg cost</th>
+                <th scope="col" className={`${th} w-20 sm:w-28`}>Price</th>
+                <th scope="col" className={th}>Value</th>
+                <th scope="col" className={`${th} hidden sm:table-cell`}>Weight</th>
+                <th scope="col" className={th}>Return</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const p = byTicker.get(r.ticker);
+                return (
+                  <tr key={r.ticker} data-testid={`position-${r.ticker}`}
+                    className={`border-t transition-colors ${t.rule} ${t.rowHover}`}>
+                    <th scope="row" className="px-2 py-2 text-left font-semibold">{r.ticker}</th>
+                    <td className={`${td} hidden sm:table-cell`}>{shares(r.shares)}</td>
+                    <td className={`${td} hidden sm:table-cell`}>{usd2.format(r.cost)}</td>
+                    <td className="py-1 pl-2">
+                      <PriceCell row={r} t={t} inputBase={inputBase} onChanged={onChanged} />
+                    </td>
+                    <td className={td}>{usd0.format(r.shares * r.price)}</td>
+                    <td className={`${td} hidden sm:table-cell`}>{p ? pct(p.weight) : ""}</td>
+                    <td className={`px-2 py-2 text-right tabular-nums ${p && p.gain < 0 ? t.down : t.up}`}>
+                      {p ? signedUsd(p.gain) : ""}
+                      {p && <span className={`ml-2 hidden text-xs sm:inline ${t.muted}`}>{signedPct(p.gainPct)}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className={`border-t ${t.rule}`}>
+                <th scope="row" className={`px-2 py-2 text-left font-normal ${t.muted}`}>Invested</th>
+                <td className="hidden sm:table-cell" /><td className="hidden sm:table-cell" /><td />
+                <td className={td}>{usd0.format(invested)}</td>
+                <td className={`${td} hidden sm:table-cell`}>{model?.total ? pct(invested / model.total) : ""}</td>
+                <td />
+              </tr>
+              <tr className={`border-t ${t.rule}`}>
+                <th scope="row" className={`px-2 py-2 text-left font-normal ${t.muted}`}>Cash</th>
+                <td className="hidden sm:table-cell" /><td className="hidden sm:table-cell" /><td />
+                <td className={td} data-testid="cash-balance">{usd2.format(cash)}</td>
+                <td className={`${td} hidden sm:table-cell`}>{model?.total ? pct(cash / model.total) : ""}</td>
+                <td />
+              </tr>
+              <tr className="total-row">
+                <th scope="row" className={`px-2 py-2 text-left font-semibold ${t.ruleStrong}`}>Total</th>
+                <td className={`hidden sm:table-cell ${t.ruleStrong}`} /><td className={`hidden sm:table-cell ${t.ruleStrong}`} /><td className={t.ruleStrong} />
+                <td className={`px-2 py-2 text-right font-semibold tabular-nums ${t.ruleStrong}`}>
+                  {usd0.format(invested + cash)}
+                </td>
+                <td className={`hidden sm:table-cell ${t.ruleStrong}`} />
+                <td className={`px-2 py-2 text-right tabular-nums ${t.ruleStrong} ${model && model.gainTotal < 0 ? t.down : t.up}`}>
+                  {model ? signedUsd(model.gainTotal) : ""}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      {rows.length > 0 && (
+        <p className={`mt-3 text-xs ${t.faint}`}>
+          Shares and cost come from your transactions and can't be edited directly. Price is the
+          last trade unless you update it.
+        </p>
       )}
     </section>
   );
@@ -152,7 +198,7 @@ function Positions({ t, rows, cash, inputBase, onChanged }) {
 /* ------------------------------------------------------------------ *
  * Record a transaction
  * ------------------------------------------------------------------ */
-function RecordForm({ t, inputBase, onChanged }) {
+export function RecordForm({ t, inputBase, onChanged }) {
   const [type, setType] = useState("BUY");
   const [ticker, setTicker] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -165,6 +211,21 @@ function RecordForm({ t, inputBase, onChanged }) {
   // One key per distinct submission. A retry of the same form (after a
   // timeout, say) reuses it, so the server records the transaction once.
   const keyRef = useRef(null);
+  const firstField = useRef(null);
+
+  // The command palette can open this form on a given transaction type.
+  useEffect(
+    () =>
+      on("record", (nextType) => {
+        keyRef.current = null;
+        setError("");
+        setDone("");
+        setType(nextType);
+        setTimeout(() => firstField.current?.focus(), 0);
+      }),
+    []
+  );
+
   const touch = (setter) => (value) => {
     keyRef.current = null;
     setError("");
@@ -206,11 +267,12 @@ function RecordForm({ t, inputBase, onChanged }) {
   }
 
   const field = `w-full ${inputBase} ${t.input}`;
-  const label = `mb-1 block text-xs font-medium uppercase tracking-wide ${t.faint}`;
+  const label = `mb-1 block label ${t.faint}`;
 
   return (
-    <section className={`rounded-xl border p-5 transition-colors duration-500 ${t.card}`}>
-      <h2 className={`mb-3 text-sm font-medium ${t.heading}`}>Record a transaction</h2>
+    <section id="record" tabIndex={-1}
+      className={`rounded-lg border p-5 outline-none transition-colors duration-500 ${t.card}`}>
+      <h2 className={`title mb-3 ${t.heading}`}>Record a transaction</h2>
       <form onSubmit={submit} className="space-y-3">
         <div role="group" aria-label="Transaction type"
           className={`flex rounded-lg border p-0.5 transition-colors duration-500 ${t.toggleShell}`}>
@@ -233,7 +295,7 @@ function RecordForm({ t, inputBase, onChanged }) {
           <div className="grid grid-cols-3 gap-2">
             <label>
               <span className={label}>Ticker</span>
-              <input value={ticker} onChange={(e) => touch(setTicker)(e.target.value)}
+              <input ref={firstField} value={ticker} onChange={(e) => touch(setTicker)(e.target.value)}
                 placeholder="AAPL" maxLength={12} className={`uppercase ${field}`} />
             </label>
             <label>
@@ -252,14 +314,14 @@ function RecordForm({ t, inputBase, onChanged }) {
         ) : (
           <label className="block">
             <span className={label}>Amount</span>
-            <input type="number" min="0" step="0.01" value={amount}
+            <input ref={firstField} type="number" min="0" step="0.01" value={amount}
               onChange={(e) => touch(setAmount)(e.target.value)} placeholder="0.00"
               className={`text-right tabular-nums ${field}`} />
           </label>
         )}
 
         <div className="flex items-center justify-between gap-3">
-          <span className={`font-mono text-sm tabular-nums ${t.muted}`}>
+          <span className={`tabular-nums text-sm ${t.muted}`}>
             {meta.trade && total > 0 ? `Total ${usd2.format(total)}` : " "}
           </span>
           <button
@@ -291,7 +353,7 @@ function RecordForm({ t, inputBase, onChanged }) {
 /* ------------------------------------------------------------------ *
  * Activity: the journal, newest first
  * ------------------------------------------------------------------ */
-function Activity({ t, refreshKey, onChanged }) {
+export function Activity({ t, refreshKey, onChanged }) {
   const [transactions, setTransactions] = useState(null);
   const [balanced, setBalanced] = useState(null);
   const [open, setOpen] = useState(null);
@@ -330,11 +392,12 @@ function Activity({ t, refreshKey, onChanged }) {
   }
 
   return (
-    <section className={`rounded-xl border p-5 transition-colors duration-500 ${t.card}`}>
+    <section id="activity" tabIndex={-1}
+      className={`rounded-lg border p-5 outline-none transition-colors duration-500 ${t.card}`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className={`flex items-center gap-2 ${t.heading}`}>
           <BookOpen className="h-4 w-4" />
-          <h2 className="text-sm font-medium">Activity</h2>
+          <h2 className="title">Activity</h2>
         </div>
         {balanced !== null && (
           <span className={`flex items-center gap-1.5 text-xs ${balanced ? t.up : t.down}`}
@@ -357,7 +420,7 @@ function Activity({ t, refreshKey, onChanged }) {
         <p className={`text-sm ${t.muted}`}>Nothing recorded yet.</p>
       )}
 
-      <ul className="max-h-96 space-y-1 overflow-y-auto pr-1">
+      <ul className="max-h-[28rem] space-y-1 overflow-y-auto pr-1">
         {(transactions || []).map((tx) => {
           const effect = cashEffect(tx);
           const isOpen = open === tx.id;
@@ -373,17 +436,17 @@ function Activity({ t, refreshKey, onChanged }) {
                   {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
                 <div className="min-w-0 flex-1">
-                  <div className={`truncate ${tx.reversed ? `line-through ${t.faint}` : t.body}`}>
+                  <div className={`leading-snug ${tx.reversed ? `line-through ${t.faint}` : t.body}`}>
                     {describe(tx)}
                   </div>
                   <div className={`text-xs ${t.faint}`}>
                     {new Date(tx.createdAt).toLocaleString(undefined, {
                       month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
                     })}
-                    {tx.reversed && " · reversed"}
+                    {tx.reversed && ", reversed"}
                   </div>
                 </div>
-                <div className={`shrink-0 font-mono tabular-nums ${effect >= 0 ? t.up : t.body}`}>
+                <div className={`shrink-0 tabular-nums ${effect >= 0 ? t.up : t.body}`}>
                   {signedUsd2(effect)}
                 </div>
                 {tx.reversible ? (
@@ -406,18 +469,18 @@ function Activity({ t, refreshKey, onChanged }) {
               {isOpen && (
                 <table className={`mb-2 ml-7 mt-1 w-[calc(100%-1.75rem)] text-xs ${t.muted}`}>
                   <thead>
-                    <tr className={`text-left uppercase tracking-wide ${t.faint}`}>
+                    <tr className={`text-left  ${t.faint}`}>
                       <th className="py-1 font-medium">Account</th>
                       <th className="py-1 text-right font-medium">Debit</th>
                       <th className="py-1 text-right font-medium">Credit</th>
                     </tr>
                   </thead>
-                  <tbody className="font-mono tabular-nums">
+                  <tbody className="tabular-nums">
                     {tx.entries.map((e, i) => (
                       <tr key={i}>
                         <td className="py-0.5 font-sans">
                           {ACCOUNT_LABELS[e.account] || e.account}
-                          {e.ticker ? ` · ${e.ticker}` : ""}
+                          {e.ticker ? ` (${e.ticker})` : ""}
                         </td>
                         <td className="py-0.5 text-right">{e.debit != null ? usd2.format(e.debit) : ""}</td>
                         <td className="py-0.5 text-right">{e.credit != null ? usd2.format(e.credit) : ""}</td>
@@ -434,20 +497,5 @@ function Activity({ t, refreshKey, onChanged }) {
   );
 }
 
-/**
- * Everything that reads or writes the ledger. `onChanged` tells the dashboard
- * to reload the portfolio; `refreshKey` changes whenever it has.
- */
-export default function LedgerPanel({ t, rows, cash, refreshKey, onChanged }) {
-  const inputBase =
-    "rounded-lg border px-3 py-2 font-mono text-sm transition-colors duration-500 focus:outline-none focus:ring-2";
-  return (
-    <>
-      <Positions t={t} rows={rows} cash={cash} inputBase={inputBase} onChanged={onChanged} />
-      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <RecordForm t={t} inputBase={inputBase} onChanged={onChanged} />
-        <Activity t={t} refreshKey={refreshKey} onChanged={onChanged} />
-      </div>
-    </>
-  );
-}
+export const INPUT_BASE =
+  "rounded-md border px-3 py-2 text-sm transition-colors duration-500 focus:outline-none focus:ring-2";

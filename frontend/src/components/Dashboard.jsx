@@ -9,14 +9,18 @@ import {
   LogOut,
   Lock,
   CreditCard,
+  Search,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { api, ApiError } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { ThemeToggle, StatTile } from "./Chrome.jsx";
+import { ThemeToggle } from "./Chrome.jsx";
 import { PageShell } from "./Backdrop.jsx";
 import RiskPanel from "./RiskPanel.jsx";
-import LedgerPanel from "./LedgerPanel.jsx";
+import { Positions, RecordForm, Activity, INPUT_BASE } from "./LedgerPanel.jsx";
+import CommandPalette from "./CommandPalette.jsx";
+import { HoldingsTreemap } from "./charts/HoldingsTreemap.jsx";
+import { emit, goTo } from "../lib/commands.js";
 import AskPanel from "./AskPanel.jsx";
 import {
   usd0,
@@ -27,12 +31,12 @@ import {
   normalizeHolding,
 } from "../lib/portfolioModel.js";
 
-const PALETTE = [
-  "#4f46e5", "#0ea5e9", "#14b8a6", "#f59e0b",
-  "#f43f5e", "#8b5cf6", "#84cc16", "#ec4899",
-];
+// Allocation colours come from the theme: steps of the ink accent, then stone
+// and brass, so the chart belongs to the page instead of shouting over it.
 const colorFor = (name, i, chart) =>
-  name === "Cash" ? chart.cash : name === "Other" ? chart.other : PALETTE[i % PALETTE.length];
+  name === "Cash" ? chart.cash : name === "Other" ? chart.other : chart.palette[i % chart.palette.length];
+
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || "");
 
 export default function Dashboard({ theme }) {
   const { mode, setMode, resolved, t } = theme;
@@ -52,6 +56,19 @@ export default function Dashboard({ theme }) {
   const [view, setView] = useState("holdings");
   // Bumped after every reload so the risk and activity sections refetch.
   const [riskKey, setRiskKey] = useState(0);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Cmd+K on a Mac, Ctrl+K elsewhere.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /* ---------------- Load ---------------- */
   // Cash and holdings are derived from the ledger on the server, so after any
@@ -155,6 +172,44 @@ export default function Dashboard({ theme }) {
 
   /* ---------------- Render ---------------- */
   const gainTone = model.gainTotal >= 0 ? t.up : t.down;
+  const record = (type) => () => {
+    goTo("record");
+    emit("record", type);
+  };
+  const commands = [
+    { id: "go-positions", group: "Go to", label: "Positions", run: () => goTo("positions") },
+    { id: "go-activity", group: "Go to", label: "Activity", run: () => goTo("activity") },
+    ...(hasData
+      ? [
+          { id: "go-allocation", group: "Go to", label: "Allocation", run: () => goTo("allocation") },
+          { id: "go-risk", group: "Go to", label: "Risk", run: () => goTo("risk") },
+          { id: "go-ask", group: "Go to", label: "Ask your portfolio", run: () => goTo("ask") },
+          { id: "go-xray", group: "Go to", label: "X-ray", run: () => goTo("xray") },
+        ]
+      : []),
+    { id: "rec-buy", group: "Record", label: "Record a buy", run: record("BUY") },
+    { id: "rec-sell", group: "Record", label: "Record a sell", run: record("SELL") },
+    { id: "rec-deposit", group: "Record", label: "Deposit cash", run: record("DEPOSIT") },
+    { id: "rec-withdraw", group: "Record", label: "Withdraw cash", run: record("WITHDRAWAL") },
+    ...(hasData
+      ? [
+          { id: "ai-memo", group: "Analyse", label: "Write risk memo", run: () => { goTo("ask"); emit("memo"); } },
+          ...(!analysis && !needsSubscription
+            ? [{ id: "ai-xray", group: "Analyse", label: "Run the X-ray", run: () => { goTo("xray"); runAnalysis(); } }]
+            : []),
+        ]
+      : []),
+    { id: "theme-light", group: "Appearance", label: "Light theme", hint: mode === "light" ? "On" : "", run: () => setMode("light") },
+    { id: "theme-dark", group: "Appearance", label: "Dark theme", hint: mode === "dark" ? "On" : "", run: () => setMode("dark") },
+    { id: "theme-auto", group: "Appearance", label: "Match the time of day", hint: mode === "auto" ? "On" : "", run: () => setMode("auto") },
+    { id: "sign-out", group: "Account", label: isDemo ? "Exit demo" : "Sign out", run: logout },
+  ];
+  const askFromPalette = hasData
+    ? (text) => { goTo("ask"); emit("ask", text); }
+    : undefined;
+
+  const card = `rounded-lg border p-5 transition-colors duration-500 ${t.card}`;
+
   if (loading) {
     return (
       <PageShell t={t} className="flex items-center justify-center">
@@ -165,107 +220,138 @@ export default function Dashboard({ theme }) {
 
   return (
     <PageShell t={t}>
-      <style>{`
-        @keyframes mo-fade { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform:none; } }
-        .mo-fade { animation: mo-fade .4s cubic-bezier(.2,.7,.2,1) both; }
-        @media (prefers-reduced-motion: reduce){ .mo-fade { animation: none; } }
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        input::placeholder { color: ${t.placeholder}; }
-      `}</style>
+      <style>{`input::placeholder { color: ${t.placeholder}; }`}</style>
+      {/* The carved facade stays, but recedes behind the figures. */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 transition-colors duration-500"
+        style={{ background: t.veil }} />
 
-      <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
-        {/* Header */}
-        <header className={`mb-8 flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-colors duration-500 ${t.plaque}`}>
-          <div className="flex items-center gap-3">
-            <div
-              className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-500 ${t.logo}`}
-            >
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)}
+        commands={commands} onAsk={askFromPalette} t={t} />
+
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+        <header className={`mb-6 flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 transition-colors duration-500 ${t.plaque}`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-500 ${t.logo}`}>
               <Aperture className="h-5 w-5" strokeWidth={2.2} />
             </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">Motion</h1>
-              <p className={`text-sm ${t.plaqueMuted}`}>{isDemo ? "Demo session" : user?.email}</p>
+            <div className="min-w-0">
+              <h1 className="font-serif text-xl leading-tight">Motion</h1>
+              <p className={`truncate text-xs ${t.plaqueMuted}`}>{isDemo ? "Demo session" : user?.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Open the command palette"
+              aria-keyshortcuts={IS_MAC ? "Meta+K" : "Control+K"}
+              className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm transition ${t.ghostBtn}`}
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Commands</span>
+              <kbd className={`hidden rounded border px-1.5 text-xs sm:inline ${t.rule}`}>
+                {IS_MAC ? "⌘K" : "Ctrl K"}
+              </kbd>
+            </button>
             {isSubscribed && !isDemo && (
-              <button
-                onClick={openBillingPortal}
-                disabled={billingBusy}
-                title="Manage billing"
-                aria-label="Manage billing"
-                className={`rounded-lg border p-2 transition ${t.ghostBtn}`}
-              >
+              <button onClick={openBillingPortal} disabled={billingBusy} title="Manage billing"
+                aria-label="Manage billing" className={`rounded-md border p-2 transition ${t.ghostBtn}`}>
                 <CreditCard className="h-3.5 w-3.5" />
               </button>
             )}
             <ThemeToggle mode={mode} setMode={setMode} resolved={resolved} t={t} />
-            <button
-              onClick={logout}
-              title={isDemo ? "Exit demo" : "Sign out"}
+            <button onClick={logout} title={isDemo ? "Exit demo" : "Sign out"}
               aria-label={isDemo ? "Exit demo" : "Sign out"}
-              className={`rounded-lg border p-2 transition ${t.ghostBtn}`}
-            >
+              className={`rounded-md border p-2 transition ${t.ghostBtn}`}>
               <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
         </header>
 
         {isDemo && (
-          <div className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-colors duration-500 ${t.demoBadge}`}>
+          <div className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2.5 transition-colors duration-500 ${t.demoBadge}`}>
             <span className="text-sm">
-              You're viewing a demo portfolio. Record any trades you like — it won't affect
-              anyone else, and it's cleared automatically.
+              You're viewing a demo portfolio. Record any trades you like. It won't affect anyone
+              else, and it's cleared automatically.
             </span>
-            <button
-              onClick={logout}
-              className="shrink-0 text-sm font-medium underline underline-offset-2"
-            >
+            <button onClick={logout} className="shrink-0 text-sm font-medium underline underline-offset-2">
               Create your own account
             </button>
           </div>
         )}
 
         {loadError && (
-          <div className={`mb-6 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${t.errorBox}`}>
+          <div role="alert" className={`mb-6 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${t.errorBox}`}>
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{loadError}</span>
           </div>
         )}
 
-        <LedgerPanel t={t} rows={rows} cash={cash} refreshKey={riskKey} onChanged={reload} />
-
-        {!hasData ? (
-          <div
-            className={`rounded-xl border border-dashed p-10 text-center transition-colors duration-500 ${t.cardDashed} ${t.muted}`}
-          >
-            Record a deposit and a buy above to see your breakdown.
-          </div>
-        ) : (
-          <>
-            <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <StatTile label="Total value" value={usd0.format(model.total)} tone={t.heading} t={t} />
-              <StatTile
-                label="Total return"
-                value={`${signedUsd(model.gainTotal)} (${signedPct(model.gainPctTotal)})`}
-                tone={gainTone}
-                t={t}
-              />
-              <StatTile label="Positions" value={String(model.positions.length)} tone={t.heading} t={t} />
-              <StatTile
-                label="Largest holding"
-                value={`${model.topName} · ${pct(model.topWeight)}`}
-                tone={t.heading}
-                t={t}
-              />
+        {/* Statement head: the one large figure on the page, then the facts that qualify it. */}
+        <section className={`mb-6 grid gap-x-10 gap-y-5 rounded-lg border px-6 py-6 transition-colors duration-500 md:grid-cols-[auto_1fr] md:items-end ${t.card}`}>
+          <div>
+            <div className={`label ${t.muted}`}>Portfolio value</div>
+            <div className={`font-display text-6xl leading-none tracking-tight sm:text-7xl ${t.heading}`}
+              data-testid="total-value">
+              {usd0.format(model.total)}
             </div>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
+            {[
+              {
+                label: "Total return",
+                value: hasData ? signedUsd(model.gainTotal) : "None yet",
+                note: hasData ? signedPct(model.gainPctTotal) : "",
+                tone: hasData ? gainTone : t.muted,
+              },
+              { label: "Cash", value: usd0.format(cash), note: model.total ? pct(cash / model.total) : "", tone: t.heading },
+              { label: "Positions", value: String(model.positions.length), note: "", tone: t.heading },
+              {
+                label: "Largest holding",
+                value: hasData ? model.topName : "None yet",
+                note: hasData ? pct(model.topWeight) : "",
+                tone: hasData ? t.heading : t.muted,
+              },
+            ].map((item) => (
+              <div key={item.label} className={`border-l pl-4 ${t.rule}`}>
+                <dt className={`label ${t.muted}`}>{item.label}</dt>
+                <dd className={`mt-0.5 text-lg font-medium tabular-nums ${item.tone}`}>
+                  {item.value}
+                  {item.note && <span className={`ml-2 text-xs font-normal ${t.muted}`}>{item.note}</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {/* Allocation */}
-              <section className={`rounded-xl border p-5 transition-colors duration-500 ${t.card}`}>
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className={`text-sm font-medium ${t.heading}`}>Allocation</h2>
-                  <div className={`flex rounded-lg border p-0.5 ${t.toggleShell}`}>
+        {/* The books: positions on the left, the journal that produces them on the right. */}
+        <div className="mb-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <Positions t={t} rows={rows} cash={cash} model={model} inputBase={INPUT_BASE} onChanged={reload} />
+          </div>
+          <div className="space-y-6">
+            <RecordForm t={t} inputBase={INPUT_BASE} onChanged={reload} />
+            <Activity t={t} refreshKey={riskKey} onChanged={reload} />
+          </div>
+        </div>
+
+        {hasData && (
+          <>
+            <div id="allocation" tabIndex={-1} className="grid grid-cols-1 gap-6 outline-none lg:grid-cols-3">
+              <section className={`${card} lg:col-span-2`}>
+                <h2 className={`title ${t.heading}`}>Size and return</h2>
+                <p className={`mb-4 mt-1 text-xs leading-relaxed ${t.muted}`}>
+                  Each tile's area is the position's share of invested value. Green means it is
+                  worth more than it cost, red less; the stronger the colour, the larger the move.
+                </p>
+                <HoldingsTreemap positions={model.positions} dark={resolved === "dark"}
+                  format={usd0.format} signedPct={signedPct} t={t} height={344} />
+              </section>
+
+              <section className={card}>
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <h2 className={`title ${t.heading}`}>Allocation</h2>
+                  <div role="group" aria-label="Group allocation by"
+                    className={`flex rounded-md border p-0.5 ${t.toggleShell}`}>
                     {[
                       { k: "holdings", label: "Holdings" },
                       { k: "sector", label: "Sectors" },
@@ -277,7 +363,9 @@ export default function Dashboard({ theme }) {
                           key={opt.k}
                           disabled={locked}
                           onClick={() => setView(opt.k)}
-                          className={`rounded-md px-2.5 py-1 text-xs transition ${
+                          aria-pressed={view === opt.k}
+                          title={locked ? "Run the X-ray to group by this" : undefined}
+                          className={`rounded px-2 py-1 text-xs transition ${
                             view === opt.k ? t.toggleActive : locked ? t.toggleLocked : t.toggleIdle
                           }`}
                         >
@@ -288,94 +376,43 @@ export default function Dashboard({ theme }) {
                   </div>
                 </div>
 
-                {donut.length === 0 ? (
-                  <div className={`flex h-64 items-center justify-center text-center text-sm ${t.faint}`}>
-                    Run the X-ray to break this down by sector.
+                <div className="relative mx-auto h-44 w-44">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={donut} dataKey="value" nameKey="name" innerRadius={56} outerRadius={84}
+                        paddingAngle={1} stroke={t.chart.stroke} isAnimationActive={false}>
+                        {donut.map((d, i) => (
+                          <Cell key={d.name} fill={colorFor(d.name, i, t.chart)} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(v) => usd0.format(v)}
+                        itemStyle={{ color: t.chart.tooltipText }}
+                        contentStyle={{
+                          borderRadius: 6,
+                          border: `1px solid ${t.chart.tooltipBorder}`,
+                          backgroundColor: t.chart.tooltipBg,
+                          color: t.chart.tooltipText,
+                          fontSize: 12,
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="font-display text-xl">{usd0.format(model.total)}</span>
+                    <span className={`text-xs ${t.muted}`}>total</span>
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-4 sm:flex-row">
-                    <div className="relative h-52 w-52 shrink-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={donut}
-                            dataKey="value"
-                            nameKey="name"
-                            innerRadius={62}
-                            outerRadius={92}
-                            paddingAngle={1.5}
-                            stroke={t.chart.stroke}
-                          >
-                            {donut.map((d, i) => (
-                              <Cell key={d.name} fill={colorFor(d.name, i, t.chart)} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            formatter={(v) => usd0.format(v)}
-                            itemStyle={{ color: t.chart.tooltipText }}
-                            contentStyle={{
-                              borderRadius: 8,
-                              border: `1px solid ${t.chart.tooltipBorder}`,
-                              backgroundColor: t.chart.tooltipBg,
-                              color: t.chart.tooltipText,
-                              fontSize: 12,
-                              fontFamily: "monospace",
-                            }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="font-mono text-lg font-semibold tabular-nums">
-                          {usd0.format(model.total)}
-                        </span>
-                        <span className={`text-xs ${t.faint}`}>total</span>
-                      </div>
-                    </div>
-                    <div className="w-full space-y-1.5">
-                      {donut.map((d, i) => (
-                        <div key={d.name} className="flex items-center gap-2 text-sm">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                            style={{ backgroundColor: colorFor(d.name, i, t.chart) }}
-                          />
-                          <span className={`flex-1 truncate ${t.body}`}>{d.name}</span>
-                          <span className={`font-mono tabular-nums ${t.muted}`}>
-                            {pct(d.value / model.total)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              {/* Positions */}
-              <section className={`rounded-xl border p-5 transition-colors duration-500 ${t.card}`}>
-                <h2 className={`mb-4 text-sm font-medium ${t.heading}`}>Positions</h2>
-                <div className="space-y-3">
-                  {model.positions.map((p) => (
-                    <div key={p.id} className="flex items-center gap-3">
-                      <div className="w-14 shrink-0 font-mono text-sm font-medium">{p.ticker}</div>
-                      <div className="flex-1">
-                        <div className="mb-1 flex justify-between text-xs">
-                          <span className={t.faint}>{pct(p.weight)}</span>
-                          <span className={`font-mono tabular-nums ${p.gain >= 0 ? t.up : t.down}`}>
-                            {signedPct(p.gainPct)}
-                          </span>
-                        </div>
-                        <div className={`h-1.5 w-full rounded-full ${t.barTrack}`}>
-                          <div
-                            className={`h-1.5 rounded-full ${t.barFill}`}
-                            style={{ width: `${Math.max(2, p.weight * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className={`w-20 shrink-0 text-right font-mono text-sm tabular-nums ${t.body}`}>
-                        {usd0.format(p.value)}
-                      </div>
-                    </div>
-                  ))}
                 </div>
+                <ul className="mt-4 space-y-1.5">
+                  {donut.map((d, i) => (
+                    <li key={d.name} className="flex items-center gap-2 text-sm">
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                        style={{ backgroundColor: colorFor(d.name, i, t.chart) }} />
+                      <span className={`flex-1 truncate ${t.body}`}>{d.name}</span>
+                      <span className={`tabular-nums ${t.muted}`}>{pct(d.value / model.total)}</span>
+                    </li>
+                  ))}
+                </ul>
               </section>
             </div>
 
@@ -383,49 +420,50 @@ export default function Dashboard({ theme }) {
 
             <AskPanel t={t} />
 
-            {/* Analysis */}
-            <div className="mt-6">
+            {/* X-ray: AI classification of the holdings */}
+            <div id="xray" tabIndex={-1} className="mt-6 outline-none">
               {needsSubscription ? (
-                <div className={`rounded-xl border p-6 text-center transition-colors duration-500 ${t.card}`}>
+                <div className={`rounded-lg border p-6 text-center transition-colors duration-500 ${t.card}`}>
                   <Lock className={`mx-auto mb-3 h-6 w-6 ${t.muted}`} />
-                  <h3 className={`mb-1 text-base font-medium ${t.heading}`}>
-                    The X-ray is a paid feature
-                  </h3>
+                  <h2 className={`title mb-1 ${t.heading}`}>The X-ray is a paid feature</h2>
                   <p className={`mx-auto mb-4 max-w-sm text-sm ${t.muted}`}>
                     Subscribe to classify your holdings by sector and asset class, and get a
                     written read on your concentration.
                   </p>
-                  <button
-                    onClick={startCheckout}
-                    disabled={billingBusy}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition disabled:opacity-60 ${t.primaryBtn}`}
-                  >
+                  <button onClick={startCheckout} disabled={billingBusy}
+                    className={`inline-flex items-center justify-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition disabled:opacity-60 ${t.primaryBtn}`}>
                     {billingBusy && <Loader2 className="h-4 w-4 animate-spin" />}
                     Subscribe
                   </button>
                 </div>
               ) : (
                 !analysis && (
-                  <button
-                    onClick={runAnalysis}
-                    disabled={running}
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-medium transition disabled:opacity-60 ${t.primaryBtn}`}
-                  >
-                    {running ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> Running the X-ray…
-                      </>
-                    ) : (
-                      <>
-                        <ScanLine className="h-4 w-4" /> Run the X-ray
-                      </>
-                    )}
-                  </button>
+                  <section className={`${card} flex flex-wrap items-center justify-between gap-4`}>
+                    <div>
+                      <h2 className={`title ${t.heading}`}>X-ray</h2>
+                      <p className={`mt-1 max-w-xl text-sm ${t.muted}`}>
+                        Classifies each holding by sector and asset class, then describes the
+                        portfolio's shape and where it is concentrated.
+                      </p>
+                    </div>
+                    <button onClick={runAnalysis} disabled={running}
+                      className={`flex shrink-0 items-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition disabled:opacity-60 ${t.primaryBtn}`}>
+                      {running ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Running the X-ray…
+                        </>
+                      ) : (
+                        <>
+                          <ScanLine className="h-4 w-4" /> Run the X-ray
+                        </>
+                      )}
+                    </button>
+                  </section>
                 )
               )}
 
               {aiError && (
-                <div className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${t.errorBox}`}>
+                <div role="alert" className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${t.errorBox}`}>
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>{aiError}</span>
                 </div>
@@ -433,10 +471,10 @@ export default function Dashboard({ theme }) {
 
               {analysis && (
                 <div className="mo-fade grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  <section className={`rounded-xl border p-5 transition-colors duration-500 ${t.card}`}>
+                  <section className={card}>
                     <div className={`mb-3 flex items-center gap-2 ${t.heading}`}>
                       <Eye className="h-4 w-4" />
-                      <h2 className="text-sm font-medium">What stands out</h2>
+                      <h2 className="title">What stands out</h2>
                     </div>
                     <ul className="space-y-2.5">
                       {(analysis.observations || []).map((o, i) => (
@@ -448,10 +486,10 @@ export default function Dashboard({ theme }) {
                     </ul>
                   </section>
 
-                  <section className={`rounded-xl border p-5 transition-colors duration-500 ${t.riskCard}`}>
+                  <section className={`rounded-lg border p-5 transition-colors duration-500 ${t.riskCard}`}>
                     <div className={`mb-3 flex items-center gap-2 ${t.riskHead}`}>
                       <AlertTriangle className="h-4 w-4" />
-                      <h2 className="text-sm font-medium">Concentration &amp; risk</h2>
+                      <h2 className="title">Concentration and risk</h2>
                     </div>
                     <ul className="space-y-2.5">
                       {(analysis.risks || []).map((r, i) => (
@@ -468,15 +506,13 @@ export default function Dashboard({ theme }) {
           </>
         )}
 
-        {/* Disclaimer */}
-        <div
-          className={`mt-8 flex items-start gap-2 rounded-lg border px-4 py-3 text-xs leading-relaxed transition-colors duration-500 ${t.note}`}
-        >
+        <div className={`mt-8 flex items-start gap-2 rounded-lg border px-4 py-3 text-xs leading-relaxed transition-colors duration-500 ${t.note}`}>
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             Motion is an analytics tool, not investment advice. It describes what your portfolio is
-            made of — it never tells you what to buy, sell, or hold. Prices are the last trade or the ones you
-            enter, not live market data. Classifications are AI-generated and may contain errors.
+            made of and never tells you what to buy, sell or hold. Prices are the last trade or the
+            ones you enter, not live market data. Classifications are AI-generated and may contain
+            errors.
           </span>
         </div>
       </div>
