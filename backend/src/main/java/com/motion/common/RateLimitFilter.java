@@ -23,6 +23,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * instance; with several instances behind a load balancer the counters would
  * need to move to a shared store such as Redis.
  *
+ * Clients are told apart by the address the hosting platform's own proxy
+ * reports (server.forward-headers-strategy), never by a header the client
+ * could set itself. Behind a CDN such as Vercel that address belongs to the
+ * CDN, so visitors arriving through the same CDN location share a window.
+ * Keying on the visitor needs the CDN to prove itself to the API, with a
+ * private network or a secret header.
+ *
  * Order -50 places it after Spring Security's filter chain (order -100), so
  * CORS headers are already on the response when a 429 is sent and the browser
  * can read it.

@@ -9,6 +9,7 @@
 # summary when run in Actions. Fails if a container runs out of memory, a
 # request fails, or the API is not up within START_TIMEOUT seconds.
 set -euo pipefail
+trap 'echo "free-tier-check: failed at line $LINENO" >&2' ERR
 cd "$(git rev-parse --show-toplevel)"
 
 CPUS=${CPUS:-0.1}
@@ -17,6 +18,7 @@ START_TIMEOUT=${START_TIMEOUT:-600}
 HEALTH_PATH=${HEALTH_PATH:-/health}
 NET=motion-free-tier
 JWT=$(openssl rand -hex 48)
+RISK_TOKEN=$(openssl rand -hex 32)
 
 cleanup() {
   docker rm -f motion-api motion-risk motion-db > /dev/null 2>&1 || true
@@ -41,9 +43,10 @@ wait_for() {
   since "$start"
 }
 
-# Prints the seconds one request took and its HTTP status.
+# Prints the seconds one request took and its HTTP status, on one line
+# (read needs the newline, or it reports failure).
 timed() {
-  curl -s -o /tmp/free-tier-body -w '%{time_total} %{http_code}' "$@"
+  curl -s -o /tmp/free-tier-body -w '%{time_total} %{http_code}\n' "$@"
 }
 
 peak_mb() {
@@ -63,11 +66,12 @@ until docker exec motion-db pg_isready -U motion -q; do sleep 0.5; done
 limits=(--cpus "$CPUS" --memory "$MEMORY" --memory-swap "$MEMORY")
 
 start=$(now)
-docker run -d --name motion-risk --network "$NET" "${limits[@]}" -p 8000:8000 motion-risk-check > /dev/null
+docker run -d --name motion-risk --network "$NET" "${limits[@]}" -p 8000:8000 \
+  -e RISK_ENGINE_TOKEN="$RISK_TOKEN" motion-risk-check > /dev/null
 risk_start=$(wait_for http://localhost:8000/health "$start")
 
 api_env=(-e DATABASE_URL=postgres://motion:motion@motion-db:5432/motion -e JWT_ACCESS_SECRET="$JWT"
-  -e RISK_ENGINE_URL=http://motion-risk:8000 -e APP_URL=http://localhost:5173)
+  -e RISK_ENGINE_URL=http://motion-risk:8000 -e RISK_ENGINE_TOKEN="$RISK_TOKEN" -e APP_URL=http://localhost:5173)
 
 start=$(now)
 docker run -d --name motion-api --network "$NET" "${limits[@]}" -p 4000:4000 "${api_env[@]}" motion-api-check > /dev/null

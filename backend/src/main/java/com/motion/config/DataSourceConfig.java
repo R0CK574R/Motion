@@ -5,6 +5,7 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import javax.sql.DataSource;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -19,8 +20,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class DataSourceConfig {
 
+  /** Pool settings (size, idle timeout) are bound from spring.datasource.hikari.* afterwards. */
   @Bean
-  public DataSource dataSource(AppProperties props) {
+  @ConfigurationProperties(prefix = "spring.datasource.hikari")
+  public HikariDataSource dataSource(AppProperties props) {
     if (AppProperties.blank(props.databaseUrl())) {
       throw new IllegalStateException(
           "DATABASE_URL is not set. Copy .env.example to .env and fill it in.");

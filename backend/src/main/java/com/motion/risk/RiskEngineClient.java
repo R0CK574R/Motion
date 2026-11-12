@@ -16,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -40,7 +42,9 @@ public class RiskEngineClient {
 
   private final PortfolioService portfolio;
   private final String engineUrl;
+  private final String token;
   private final RestClient http;
+  private final RestClient wakeHttp;
 
   public RiskEngineClient(PortfolioService portfolio, AppProperties props) {
     this.portfolio = portfolio;
@@ -48,10 +52,41 @@ public class RiskEngineClient {
         AppProperties.blank(props.riskEngineUrl())
             ? null
             : props.riskEngineUrl().trim().replaceAll("/+$", "");
+    this.token =
+        AppProperties.blank(props.riskEngineToken()) ? null : props.riskEngineToken().trim();
     SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
     factory.setConnectTimeout(Duration.ofSeconds(2));
     factory.setReadTimeout(Duration.ofSeconds(5));
     this.http = RestClient.builder().requestFactory(factory).build();
+    // A sleeping engine can take a minute or two to answer its first request.
+    SimpleClientHttpRequestFactory patient = new SimpleClientHttpRequestFactory();
+    patient.setConnectTimeout(Duration.ofSeconds(10));
+    patient.setReadTimeout(Duration.ofMinutes(3));
+    this.wakeHttp = RestClient.builder().requestFactory(patient).build();
+  }
+
+  /**
+   * Wakes the risk engine as soon as this API has started. On free hosting
+   * both services sleep when idle, and whoever just woke the API is about to
+   * open the dashboard, so the engine starts warming up now rather than when
+   * the risk section first asks for it.
+   */
+  @EventListener(ApplicationReadyEvent.class)
+  public void wakeEngine() {
+    if (engineUrl == null) {
+      return;
+    }
+    Thread.ofVirtual()
+        .name("risk-engine-wake")
+        .start(
+            () -> {
+              try {
+                wakeHttp.get().uri(engineUrl + "/health").retrieve().toBodilessEntity();
+                log.info("Risk engine is awake");
+              } catch (RestClientException e) {
+                log.warn("Risk engine did not answer its wake-up call: {}", e.getMessage());
+              }
+            });
   }
 
   /**
@@ -88,6 +123,12 @@ public class RiskEngineClient {
       return http.post()
           .uri(engineUrl + "/risk")
           .contentType(MediaType.APPLICATION_JSON)
+          .headers(
+              headers -> {
+                if (token != null) {
+                  headers.setBearerAuth(token);
+                }
+              })
           .body(payload)
           .retrieve()
           .body(JsonNode.class);

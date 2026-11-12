@@ -5,6 +5,7 @@ import {
   setAccessToken,
   clearAccessToken,
   setAuthFailureHandler,
+  waitForApi,
 } from "../api/client.js";
 
 const AuthContext = createContext(null);
@@ -12,8 +13,14 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState({ status: "none" });
-  // "loading" until we know whether the refresh cookie yields a session.
+  // "loading" until we know whether the refresh cookie yields a session;
+  // "waking" while a sleeping server starts; "unreachable" if it never does.
   const [status, setStatus] = useState("loading");
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setStatus("loading");
+    setAttempt((n) => n + 1);
+  }, []);
 
   const signOutLocally = useCallback(() => {
     clearAccessToken();
@@ -36,6 +43,12 @@ export function AuthProvider({ children }) {
 
     (async () => {
       try {
+        await waitForApi({ onSlow: () => !cancelled && setStatus("waking") });
+      } catch {
+        if (!cancelled) setStatus("unreachable");
+        return;
+      }
+      try {
         await refreshSession();
         if (cancelled) return;
         await loadAccount();
@@ -48,7 +61,7 @@ export function AuthProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [signOutLocally, loadAccount]);
+  }, [signOutLocally, loadAccount, attempt]);
 
   const authenticate = useCallback(
     async (path, email, password) => {
@@ -95,6 +108,7 @@ export function AuthProvider({ children }) {
     user,
     subscription,
     status,
+    retry,
     isSubscribed:
       subscription.status === "active" || subscription.status === "trialing",
     login,

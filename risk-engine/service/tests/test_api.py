@@ -99,3 +99,19 @@ def test_bindings_expose_series_measures():
         pass
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_token_is_required_once_configured(monkeypatch):
+    monkeypatch.setenv("RISK_ENGINE_TOKEN", "s3cret-token")
+    assert client.post("/risk", json=DEMO).status_code == 401
+    wrong = {"Authorization": "Bearer not-it"}
+    assert client.post("/risk", json=DEMO, headers=wrong).status_code == 401
+    right = {"Authorization": "Bearer s3cret-token"}
+    assert client.post("/risk", json=DEMO, headers=right).status_code == 200
+    # The health check stays open for the hosting platform.
+    assert client.get("/health").status_code == 200
+
+
+def test_no_token_configured_means_open(monkeypatch):
+    monkeypatch.delenv("RISK_ENGINE_TOKEN", raising=False)
+    assert client.post("/risk", json=DEMO).status_code == 200

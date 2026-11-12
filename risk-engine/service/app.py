@@ -1,11 +1,18 @@
 """HTTP wrapper around the C++ risk engine.
 
-This service is internal: the Motion API calls it, browsers never do. It
-holds no user data and no secrets. It receives position values, runs the
-numbers in C++ (the `motion_risk` module), and returns JSON.
+Only the Motion API calls this service; browsers never do. It holds no user
+data. It receives position values, runs the numbers in C++ (the
+`motion_risk` module), and returns JSON.
+
+Where the service has to be reachable from the internet (free hosting cannot
+keep it on a private network), set RISK_ENGINE_TOKEN here and on the API:
+requests without the matching token are then refused.
 """
 
-from fastapi import FastAPI, HTTPException
+import hmac
+import os
+
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 import motion_risk
@@ -28,12 +35,22 @@ class RiskRequest(BaseModel):
     seed: int = Field(default=42, ge=0, le=2**32)
 
 
+def require_token(authorization: str | None = Header(default=None)):
+    """Refuses the request unless it carries the shared token, if one is set."""
+    expected = os.environ.get("RISK_ENGINE_TOKEN", "")
+    if not expected:
+        return  # No token configured: local development and docker compose.
+    supplied = (authorization or "").removeprefix("Bearer ").strip()
+    if not hmac.compare_digest(supplied.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Missing or wrong token.")
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "model": MODEL_VERSION}
 
 
-@app.post("/risk")
+@app.post("/risk", dependencies=[Depends(require_token)])
 def risk(req: RiskRequest):
     # The same ticker entered twice is one exposure, so merge before modelling.
     merged: dict[str, float] = {}

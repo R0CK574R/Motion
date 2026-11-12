@@ -135,12 +135,15 @@ jobs:
           mvn -B -q -DskipTests package
           nohup java -jar target/motion-api.jar > ../api.log 2>&1 &
 
+      # Served the way Vercel serves it: the same rewrites and security
+      # headers (from frontend/vercel.json), with /api forwarded to the API
+      # so the browser only ever talks to one origin.
       - name: Start the frontend
         working-directory: frontend
         run: |
           npm ci
           npm run build
-          nohup npx vite preview --port 5173 --strictPort > ../frontend.log 2>&1 &
+          API_ORIGIN=http://127.0.0.1:4000 PORT=5173 nohup node ../e2e/serve-like-vercel.mjs > ../frontend.log 2>&1 &
 
       - name: Wait for the services
         run: |
@@ -154,6 +157,8 @@ jobs:
 
       - name: Run the browser test
         working-directory: e2e
+        env:
+          EXPECT_SECURITY_HEADERS: "1"
         run: |
           npm ci
           npx playwright install --with-deps chromium

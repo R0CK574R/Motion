@@ -83,27 +83,44 @@ function Histogram({ histogram, valueAtRisk, t }) {
  * GET /api/risk; this component only formats them. `refreshKey` changes each
  * time the portfolio is saved, which triggers a refetch.
  */
+const WAKE_LIMIT_MS = 150000;
+const WAKE_RETRY_MS = 5000;
+
 export default function RiskPanel({ t, refreshKey }) {
   const [confidence, setConfidence] = useState(0.95);
   const [horizon, setHorizon] = useState(1);
   const [risk, setRisk] = useState(null);
-  const [state, setState] = useState("loading"); // loading | ready | offline | error
+  const [state, setState] = useState("loading"); // loading | waking | ready | offline | error
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setState((s) => (s === "ready" ? "ready" : "loading"));
     (async () => {
-      try {
-        const data = await api(`/api/risk?confidence=${confidence}&horizon=${horizon}`);
-        if (cancelled) return;
-        setRisk(data);
-        setState("ready");
-      } catch (err) {
-        if (cancelled) return;
-        setRisk(null);
-        setMessage(err.message || "Could not load risk.");
-        setState(err instanceof ApiError && err.status === 503 ? "offline" : "error");
+      // The risk engine sleeps on free hosting too. While it wakes, the API
+      // answers 503, so keep asking for up to WAKE_LIMIT_MS before giving up.
+      const started = Date.now();
+      for (;;) {
+        try {
+          const data = await api(`/api/risk?confidence=${confidence}&horizon=${horizon}`);
+          if (cancelled) return;
+          setRisk(data);
+          setState("ready");
+          return;
+        } catch (err) {
+          if (cancelled) return;
+          const asleep = err instanceof ApiError && err.status === 503;
+          if (asleep && Date.now() - started < WAKE_LIMIT_MS) {
+            setState("waking");
+            await new Promise((resolve) => setTimeout(resolve, WAKE_RETRY_MS));
+            if (cancelled) return;
+            continue;
+          }
+          setRisk(null);
+          setMessage(err.message || "Could not load risk.");
+          setState(asleep ? "offline" : "error");
+          return;
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -123,7 +140,9 @@ export default function RiskPanel({ t, refreshKey }) {
         <div className={`flex items-center gap-2 ${t.heading}`}>
           <Activity className="h-4 w-4" />
           <h2 className="title">Risk</h2>
-          {state === "loading" && <Loader2 className={`h-3.5 w-3.5 animate-spin ${t.faint}`} />}
+          {(state === "loading" || state === "waking") && (
+            <Loader2 className={`h-3.5 w-3.5 animate-spin ${t.faint}`} />
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Segmented options={CONFIDENCE_OPTIONS} value={confidence} onChange={setConfidence}
@@ -132,6 +151,16 @@ export default function RiskPanel({ t, refreshKey }) {
             label="Time horizon" t={t} />
         </div>
       </div>
+
+      {state === "waking" && !risk && (
+        <div role="status" className={`${card} flex items-center gap-3 text-sm ${t.muted}`}>
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          <span>
+            Starting the risk engine. It sleeps when nobody is using it and takes about a minute
+            to wake.
+          </span>
+        </div>
+      )}
 
       {(state === "offline" || state === "error") && (
         <div className={`${card} flex items-center gap-3 text-sm ${t.muted}`}>

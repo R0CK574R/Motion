@@ -14,6 +14,7 @@ public record AppProperties(
     int bcryptStrength,
     int authRateLimitPerMinute,
     String riskEngineUrl,
+    String riskEngineToken,
     String anthropicApiKey,
     String anthropicModel,
     int aiDailyLimitPerUser,

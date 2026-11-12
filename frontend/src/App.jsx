@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, CloudOff } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth/AuthContext.jsx";
 import { useAdaptiveTheme } from "./theme.js";
 import AuthScreen from "./components/AuthScreen.jsx";
@@ -7,13 +7,60 @@ import Dashboard from "./components/Dashboard.jsx";
 import { Backdrop, PageShell } from "./components/Backdrop.jsx";
 import { Intro } from "./components/Intro.jsx";
 
+/**
+ * Shown while a sleeping server wakes up. Free hosting stops the API after
+ * 15 idle minutes, so the first visit after a quiet spell waits for it.
+ */
+function Waking({ t }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const id = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <PageShell t={t} className="flex items-center justify-center px-4">
+      <div role="status" className={`max-w-sm rounded-lg border px-6 py-5 ${t.plaque}`}>
+        <div className={`mb-2 flex items-center gap-2 ${t.heading}`}>
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          <h1 className="title text-lg">Starting the server</h1>
+        </div>
+        <p className={`text-sm leading-relaxed ${t.plaqueMuted}`}>
+          Motion runs on free hosting, which sleeps when nobody is using it. Waking it up takes
+          about a minute.
+        </p>
+        <p className={`mt-3 text-xs tabular-nums ${t.plaqueMuted}`}>{seconds} seconds</p>
+      </div>
+    </PageShell>
+  );
+}
+
+function Unreachable({ t, onRetry }) {
+  return (
+    <PageShell t={t} className="flex items-center justify-center px-4">
+      <div role="alert" className={`max-w-sm rounded-lg border px-6 py-5 ${t.plaque}`}>
+        <div className={`mb-2 flex items-center gap-2 ${t.heading}`}>
+          <CloudOff className="h-4 w-4 shrink-0" />
+          <h1 className="title text-lg">Motion can't reach its server</h1>
+        </div>
+        <p className={`text-sm leading-relaxed ${t.plaqueMuted}`}>
+          It may still be starting, or it may be down. Try again in a minute.
+        </p>
+        <button onClick={onRetry} className={`mt-4 rounded-md px-4 py-2 text-sm font-medium ${t.primaryBtn}`}>
+          Try again
+        </button>
+      </div>
+    </PageShell>
+  );
+}
+
 const POLL_ATTEMPTS = 6;
 const POLL_DELAY_MS = 1500;
 
 function Shell() {
   const theme = useAdaptiveTheme();
   const { t } = theme;
-  const { status, refreshAccount } = useAuth();
+  const { status, refreshAccount, retry } = useAuth();
   const [activating, setActivating] = useState(false);
 
   /**
@@ -62,6 +109,10 @@ function Shell() {
         </div>
       </PageShell>
     );
+  } else if (status === "waking") {
+    screen = <Waking t={t} />;
+  } else if (status === "unreachable") {
+    screen = <Unreachable t={t} onRetry={retry} />;
   } else if (status === "anon") {
     screen = <AuthScreen theme={theme} />;
   } else if (activating) {

@@ -3,6 +3,10 @@
 // It expects the frontend on APP_URL (default http://localhost:5173) with the
 // API, Postgres and the risk engine running behind it. CI starts all of them;
 // see .github/workflows/ci.yml. Exits non-zero on the first failed step.
+//
+// With EXPECT_SECURITY_HEADERS=1 it also checks that the page is served with
+// its Content-Security-Policy, as on Vercel. Anything the policy blocks shows
+// up as a console error, which fails the test.
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
@@ -49,7 +53,13 @@ async function record(type, fields) {
 
 try {
   await step("open the app and start the demo", async () => {
-    await page.goto(APP_URL);
+    const response = await page.goto(APP_URL);
+    if (process.env.EXPECT_SECURITY_HEADERS === "1") {
+      const headers = response.headers();
+      for (const name of ["content-security-policy", "x-frame-options", "x-content-type-options"]) {
+        if (!headers[name]) throw new Error(`the page was served without ${name}`);
+      }
+    }
     await page.getByText("Try the demo without signing up").click();
     await page.getByText("You're viewing a demo portfolio").waitFor();
   });

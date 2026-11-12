@@ -547,7 +547,14 @@ class ApiIntegrationTest {
     User user =
         new User(null, null, demo.body().get("accessToken").asText(), demo.raw().getCookie("motion_refresh"), null);
 
-    assertThat(call(as(get("/api/auth/me"), user)).body().get("user").get("isDemo").asBoolean()).isTrue();
+    JsonNode me = call(as(get("/api/auth/me"), user)).body().get("user");
+    assertThat(me.get("isDemo").asBoolean()).isTrue();
+    // A demo account has no password, so it cannot be signed into, not even
+    // with the marker stored in place of a hash.
+    for (String guess : new String[] {"!no-password", "", "demo"}) {
+      Response login = call(body(post("/api/auth/login"), credentials(me.get("email").asText(), guess)));
+      assertThat(login.status()).isIn(400, 401);
+    }
 
     JsonNode p = portfolio(user);
     assertMoney(p.get("cash"), "6500");
