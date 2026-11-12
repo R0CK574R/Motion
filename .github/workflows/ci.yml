@@ -191,3 +191,11 @@ jobs:
       - name: Show container logs
         if: failure()
         run: docker compose logs --tail 80
+
+  # Runs the API and the risk engine with Render's free-tier limits
+  # (0.1 CPU, 512 MB) and reports cold start, response times and memory.
+  free-tier:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/free-tier-check.sh
