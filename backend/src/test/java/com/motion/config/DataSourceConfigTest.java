@@ -11,7 +11,7 @@ class DataSourceConfigTest {
   void neonConnectionStringKeepsItsSecuritySettings() {
     DataSourceConfig.Target target =
         DataSourceConfig.translate(
-            "postgresql://neondb_owner:p%40ss%3Aword@ep-cool-name-a1b2c3.us-west-2.aws.neon.tech/neondb"
+            "postgresql://neondb_owner:pw%40%3A1@ep-cool-name-a1b2c3.us-west-2.aws.neon.tech/neondb"
                 + "?sslmode=require&channel_binding=require",
             false);
     assertThat(target.jdbcUrl())
@@ -19,7 +19,7 @@ class DataSourceConfigTest {
             "jdbc:postgresql://ep-cool-name-a1b2c3.us-west-2.aws.neon.tech/neondb"
                 + "?sslmode=require&channelBinding=require");
     assertThat(target.username()).isEqualTo("neondb_owner");
-    assertThat(target.password()).isEqualTo("p@ss:word");
+    assertThat(target.password()).isEqualTo("pw@:1");
   }
 
   @Test
